@@ -1,17 +1,27 @@
 <#
 .SYNOPSIS
-    Short description
+    ConvertTo-HashtableString
+    Converts a standalone or nested hashtable object into string form as you would see in raw PS code.
 .DESCRIPTION
-    Long description
+    ConvertTo-HashtableString is only capable of handling simple hashtable objects where the contents
+    are either value types or can be easily converted into strings with the object's .ToString()
+    method. It will not properly handle complex hashtables or cases where the value's .ToString()
+    method does not return useable data.
 .EXAMPLE
-    PS C:\> <example usage>
-    Explanation of what the example does
+    PS C:\> ConvertTo-HashtableString -Hashtable @{Value1 = "Value1";Value2 = 2}
+    
+    Output:
+    @{
+        "Value1" = "Value1"
+        "Value2" = 2
+    }
 .INPUTS
-    Inputs (if any)
+    ConvertTo-HashtableString will accept pipeline input of any amount of hashtable objects.
 .OUTPUTS
-    Output (if any)
+    Outputs a string representation of the input object.
 .NOTES
-    General notes
+    Will handle nested hashtables without difficulty, but will not be able to handle other data types that do not
+    cleanly convert to string values with .ToString()
 #>
 filter ConvertTo-HashtableString {
     [CmdletBinding()]
@@ -26,14 +36,19 @@ filter ConvertTo-HashtableString {
         $StringBuilder.AppendLine("@{")
 
         $InputObject.Keys | ForEach-Object {
-            if ($InputObject[$_] -is [Hashtable]) {
-                $ValueString = ConvertTo-HashtableString -InputObject $InputObject[$_]
-            }
-            else {
-                $ValueString = $InputObject[$_.ToString()]
+            switch ($InputObject.GetType()) {
+                [Hashtable] {
+                    $ValueString = ConvertTo-HashtableString -InputObject $InputObject[$_]
+                }
+                [string] {
+                    $ValueString = "'$($InputObject[$_.ToString()])'"
+                }
+                default {
+                    $ValueString = $InputObject[$_.ToString()]
+                }
             }
 
-            $StringBuilder.AppendFormat('"{0}" = {1}', $_, $ValueString)
+            $StringBuilder.AppendFormat('`t"{0}" = {1}', $_, $ValueString)
         }
 
         $StringBuilder.AppendLine("}")
