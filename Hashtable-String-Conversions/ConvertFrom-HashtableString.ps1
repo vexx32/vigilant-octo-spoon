@@ -24,21 +24,17 @@ function ConvertFrom-HashtableString {
     param (
         [Alias('Path', 'InFile')]
         [Parameter(Mandatory, ValueFromPipeline, Position = 0, ParameterSetName = "FileInput")]
-        [ValidateScript(
-            { Test-Path -Path $_ }
-        )]
-        [string]$FilePath,
+        [System.IO.FileInfo]$FilePath,
 
 
         [Parameter(Mandatory, ValueFromPipeline, Position = 0, ParameterSetName = "DirectInput")]
         [string]$HashtableString
     )
-    begin {
+    process {
         if ($PSCmdlet.ParameterSetName -eq "FileInput") {
             $HashtableString = Get-Content -Raw -Path $FilePath
         }
-    }
-    process {
+
         [Hashtable] $OutputObject = Invoke-Expression -Command $HashtableString
         Write-Output $OutputObject
     }
