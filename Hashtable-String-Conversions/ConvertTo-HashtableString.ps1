@@ -25,6 +25,7 @@
 #>
 filter ConvertTo-HashtableString {
     [CmdletBinding()]
+    [Alias(cths)]
     param (
         [Alias('Hashtable')]
         [Parameter(Mandatory, ValueFromPipeline, Position = 0)]
