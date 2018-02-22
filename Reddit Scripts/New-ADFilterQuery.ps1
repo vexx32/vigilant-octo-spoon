@@ -1,18 +1,23 @@
 function New-ADFilterQuery {
     <#
     .SYNOPSIS
-        Short description
+        New-ADFilterQuery
+        Takes an array of items and turns them into a structured AD query to be passed to the filter parameter.
     .DESCRIPTION
-        Long description
+        Pipe in or supply an array of values to construct a filter query from. All values must target the same AD property.
     .EXAMPLE
-        PS C:\> <example usage>
-        Explanation of what the example does
+        PS C:\> $Query = New-ADFilterQuery -Items 'WS-Example01' -FilterProperty 'SamAccountName'
+        PS C:\> Get-ADComputer -Filter $Query
+        
+        Constructs a filter query to search for anything with a SamAccountName of 'WS-Example01'. Passing it to Get-ADComputer will
+        retrieve computer objects with this name. The operation can be reversed or altered using the -FilterOperator and -JoinOperator
+        parameters.
     .INPUTS
-        Inputs (if any)
+        Takes pipeline input as a collection of string values containing the target values.
     .OUTPUTS
-        Output (if any)
+        Outputs a script block that can be passed to the -Filter parameter of AD cmdlets.
     .NOTES
-        General notes
+        
     #>
     [CmdletBinding()]
     [OutputType([scriptblock])]
