@@ -127,35 +127,32 @@ function New-WordCloud {
         $TotalSize = [SizeF]::Empty
 
         $MaxColors = if ($PSBoundParameters.ContainsKey('MaxColors')) { $MaxColors } else { [int]::MaxValue }
+        $MinSaturation = if ($Monochrome) { 0 } else { 0.5 }
 
-        if ($MaxColors) {
-            $ColorList = $ColorSet |
-                Sort-Object {Get-Random} |
-                Select-Object -First $MaxColors |
-                ForEach-Object {
+        $ColorList = $ColorSet |
+            Sort-Object {Get-Random} |
+            Select-Object -First $MaxColors |
+            ForEach-Object {
                 if (-not $Monochrome) {
                     [Color]::FromKnownColor($_)
                 }
                 else {
-                    $Brightness = [Color]::FromKnownColor($_).GetBrightness() * 255
-                    [Color]::FromArgb(1, $Brightness, $Brightness, $Brightness)
+                    [int]$Brightness = [Color]::FromKnownColor($_).GetBrightness() * 255
+                    [Color]::FromArgb($Brightness, $Brightness, $Brightness)
                 }
+            } | Where-Object {
+                if ($BackgroundColor) {
+                    $_.Name -notmatch $BackgroundColor -and
+                    $_.GetSaturation() -ge $MinSaturation
+                }
+                else {
+                    $_.GetSaturation() -ge $MinSaturation
+                }
+            } | Sort-Object -Descending {
+                $Value = $_.GetBrightness()
+                $Random = (-$Value..$Value | Get-Random) / (1 - $_.GetSaturation())
+                $Value + $Random
             }
-        }
-        $MinSaturation = if ($Monochrome) { 0 } else { 0.5 }
-        $ColorList = $ColorList | Where-Object {
-            if ($BackgroundColor) {
-                $_.Name -notmatch $BackgroundColor -and
-                $_.GetSaturation() -ge $MinSaturation
-            }
-            else {
-                $_.GetSaturation() -ge $MinSaturation
-            }
-        } | Sort-Object -Descending {
-            $Value = $_.GetBrightness()
-            $Random = (-$Value..$Value | Get-Random) / (1 - $_.GetSaturation())
-            $Value + $Random
-        }
 
         $RectangleList = [List[RectangleF]]::new()
 
