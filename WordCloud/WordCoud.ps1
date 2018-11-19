@@ -33,12 +33,12 @@ function New-WordCloud {
         $InputString,
 
         [Parameter(Mandatory, Position = 1)]
-        [Alias('OutFilePath','ExportPath')]
+        [Alias('OutFile','ExportPath','ImagePath')]
         [ValidateScript(
             { Test-Path -IsValid $_ -PathType Leaf }
         )]
         [string[]]
-        $ImagePath,
+        $Path,
 
         [Parameter()]
         [Alias('ColourSet')]
@@ -54,10 +54,16 @@ function New-WordCloud {
         [ValidateRange(1, 20)]
         $DistanceStep = 5,
 
-        $RadialGranularity,
+        [Parameter()]
+        [ValidateRange(1, 50)]
+        $RadialGranularity = 15,
 
+        [Parameter()]
+        [Alias('BackgroundColour')]
+        [KnownColor]
         $BackgroundColor = [KnownColor]::Black,
 
+        [Parameter()]
         [switch]
         [Alias('Greyscale', 'Grayscale')]
         $Monochrome
@@ -179,8 +185,8 @@ $ColorIndex = 0
             continue words
         }
 
-        $RadialGranularity = ($Distance + 1) * 1.5
-        for ($Angle = 0; $Angle -le 360; $Angle += 360 / $RadialGranularity) {
+        $AngleIncrement = ($Distance + 1) * ($RadialGranularity / 10)
+        for ($Angle = 0; $Angle -le 360; $Angle += 360 / $AngleIncrement) {
             $Radians = $Angle | Convert-ToRadians
             $Complex = [Complex]::FromPolarCoordinates($Distance, $Radians)
 
