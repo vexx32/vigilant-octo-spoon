@@ -23,6 +23,46 @@ function Convert-ToRadians {
     }
 }
 
+function New-WordCloud {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, Position = 0, ValueFromPipeline)]
+        [Alias('Text', 'String', 'Words', 'Document', 'Page')]
+        [ValidateNotNullOrEmpty()]
+        [string[]]
+        $InputString,
+
+        [Parameter(Mandatory, Position = 1)]
+        [Alias('OutFilePath','ExportPath')]
+        [ValidateScript(
+            { Test-Path -IsValid $_ -PathType Leaf }
+        )]
+        [string[]]
+        $ImagePath,
+
+        [Parameter()]
+        [Alias('ColourSet')]
+        [KnownColor[]]
+        $ColorSet = [Enum]::GetValues([KnownColor]),
+
+        [Parameter()]
+        [Alias('MaxColours')]
+        [int]
+        $MaxColors,
+
+        [Parameter()]
+        [ValidateRange(1, 20)]
+        $DistanceStep = 5,
+
+        $RadialGranularity,
+
+        $BackgroundColor = [KnownColor]::Black,
+
+        [switch]
+        [Alias('Greyscale', 'Grayscale')]
+        $Monochrome
+    )
+}
 $Text = Get-Content -Path "$PSScriptRoot\Test.txt"
 
 $ExcludedWords = @(
@@ -43,7 +83,7 @@ $ExcludedWords = @(
     'wouldn''t', 'www', 'you', 'you''d', 'you''ll', 'you''re', 'you''ve', 'your', 'yours', 'yourself', 'yourselves'
 ) -join '|'
 
-$SplitChars = [char[]]" `n.,`"?!{}[]:'()"
+$SplitChars = [char[]]" `n.,`"?!{}[]:'()`“`”"
 $WordList = $Text.Split($SplitChars, [StringSplitOptions]::RemoveEmptyEntries).Where{
     $_ -notmatch "^$ExcludedWords$|^[^a-z]+$"
 }
@@ -102,7 +142,7 @@ $DrawingSurface.SmoothingMode = [Drawing2D.SmoothingMode]::AntiAlias
 $DrawingSurface.TextRenderingHint = [Text.TextRenderingHint]::AntiAlias
 
 [List[KnownColor]]$ColorList = [KnownColor[]](
-    [Enum]::GetValues([KnownColor])|
+    [Enum]::GetValues([KnownColor]) |
         Where-Object {
             $_ -notmatch 'black|dark' -and
             [Color]::FromKnownColor([KnownColor]$_).GetSaturation() -gt 0.5
@@ -116,10 +156,13 @@ $DrawingSurface.TextRenderingHint = [Text.TextRenderingHint]::AntiAlias
 )
 
 $Centre = $FinalImageSize.Height / 2
-$OrderedWords = $WordHeight.Keys | Sort-Object { $WordHeight[$_] } -Descending
+$OrderedWords = $WordHeight.Keys |
+    Sort-Object { $WordSizes[$_].Width * $WordSizes[$_].Height } -Descending |
+    Select-Object -First 100
 
 $RectangleList = [List[RectangleF]]::new()
 $Distance = 0
+$ColorIndex = 0
 :words foreach ($Word in $OrderedWords) {
     $Font = [Font]::new(
         $FontFamily,
@@ -136,7 +179,8 @@ $Distance = 0
             continue words
         }
 
-        for ($Angle = 0; $Angle -le 360; $Angle += 10) {
+        $RadialGranularity = ($Distance + 1) * 1.5
+        for ($Angle = 0; $Angle -le 360; $Angle += 360 / $RadialGranularity) {
             $Radians = $Angle | Convert-ToRadians
             $Complex = [Complex]::FromPolarCoordinates($Distance, $Radians)
 
@@ -176,9 +220,13 @@ $Distance = 0
     } while ($IsColliding)
     $RectangleList.Add($Rect)
 
-    $KnownColor = $ColorList[0]
-    $ColorList.RemoveAt(0)
+    $KnownColor = $ColorList[$ColorIndex]
     $Color = [Color]::FromKnownColor($KnownColor)
+
+    $ColorIndex++
+    if ($ColorIndex -ge $ColorList.Count) {
+        $ColorIndex = 0
+    }
 
     $DrawingSurface.DrawString($Word, $Font, [SolidBrush]::new($Color), $Location)
 }
