@@ -25,6 +25,7 @@ function Convert-ToRadians {
 
 function New-WordCloud {
     [CmdletBinding()]
+    [Alias('wordcloud','wcloud')]
     param(
         [Parameter(Mandatory, Position = 0, ValueFromPipeline)]
         [Alias('Text', 'String', 'Words', 'Document', 'Page')]
