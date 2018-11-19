@@ -1,42 +1,96 @@
-This isn’t exactly a common requirement, but it turned up as I was working on PSKoans. Essentially, I had a slight problem: the koans in AboutDiscovery that deal with Get-Command were consistently finding commands that were intended to be hidden to the user; commands internal to the PSKoans module itself. So, I needed a way to have the koan files evaluated outside the module scope.
 
-Scope Breaking
-At its simplest, scope breaking can work like this: you take a SessionState, PSModuleInfo, or similarly session-state-tied object and invoke a command using its session state. It looks a bit like this:
+Clear-Script
+Joel (Sallow) Francis | PowerShell Enthusiast | @vexx32 /u/ta11ow
 
-& (Get-Module 'Pester') { Get-Command -Module Pester }
-This will show you all the secret, private functions that Pester would prefer you not to see. You could also use this method to execute those functions. This is the precise inverse of what I wanted to do. I wanted to execute code in a module function that would see only the outside world, and not the cmdlets and functions that created it.
+Home Blog About
+October 26, 2018
+Anonymous Functions in PowerShell
+PowerShell sits in quite an unusual place in terms of classifying programming languages. Most languages can be pretty easily categorised; C# is an object-oriented programming language. Haskell is the classic example of a functional programming language.
 
-Breaking into the Global Scope
-Thanks to Patrick Meinecke I was given this little taste of the dark arts of breaking out into the global scope:
+PowerShell sits in a strange in-between, a bit like F# does; it has strong object-oriented roots being built upon C# and the .NET Framework (or .NET Core) platform. However, it is also very much a functional language.
 
-             # [psmoduleinfo]::new(bool linkToGlobal)
-$GlobalScope = [psmoduleinfo]::new($true)
+PowerShell as a Functional Language
+Any uncaptured data is treated as output; explicit return statements are not required.
+PowerShell’s pipeline is solidly reminiscent of F#’s similar pipe operator.
+Use of lambda (unnamed functions) is incredibly easy.
+However, just like F#, you can quite easily ignore PowerShell’s functional programming behaviour and treat it just like any old object-oriented language, relying on .NET features rather than some of the more interesting native language features.
 
-& $GlobalScope {
-    # Invoke commands here
+What is an Anonymous Function in PowerShell
+Well, for all intents and purposes, your { basic script block } is the de facto anonymous function in PowerShell. In fact, even a named function can be separated from its script block, and the script block can be used independently:
+
+$FunctionObject = Get-Item 'Function:\mkdir'
+$ScriptBlock = $FunctionObject.Scriptblock
+
+# The oneliner version, using variable-provider-access syntax:
+$ScriptBlock = ${function:mkdir}
+You can look at the contents of the script block, examine parameters, and even manually invoke the script block with a simple $ScriptBlock.Invoke() and pass arguments to the script block by placing them positionally inside the parentheses of the Invoke() method.
+
+Where Anonymous Functions are Used
+One common place you will actually need to use an anonymous function is when calling .NET methods that require delegates. My favourite example is a lesser-known method on the List<T> class called FindAll().
+
+using namespace System.Collections.Generic
+
+$List = [List[int]](1..100)
+$List.FindAll(
+    {
+        param($Item)
+        $Item % 4 -eq 0
+    }
+) -join ', '
+
+# Output
+4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 88, 92, 96, 100
+As you can see, the FindAll() method takes a… script block? That might not seem odd to some of you, but for those of you coming from C#, this code looks a little more like this:
+
+List<int> myList = new List<int>();
+for (int i = 1; i <= 100; i++)
+{
+    myList.Add(i);
 }
-This was almost there. But it has a slight problem. You see, the command I wanted to use here was actually Invoke-Pester. That’s how my PSKoans operate; just like a Pester script, with a few bells and whistles.
 
-Nothing too crazy there… until I realized, as it was building in the VM. I’ve just made it nigh impossible to test properly. See, my tests need to be able to mock that Invoke-Pester call. And it was not happening. It seemed to mock just fine, but thereafter attempting to call any mocked command simply failed with some rather curious errors.
+int[] matchingItems = myList.FindAll(x => x % 4 == 0);
+Not only is it much more code to get the same result, but that is not a script block. That’s a C# lambda function. PowerShell actually translates the script block into a pseudo-delegate for the method to use.
 
-Pester Summons Elder Gods
+For things like this, the script block or delegate must have a boolean end result to work correctly, but not all C# delegates require such simple (or any) output. Similar constructs are used when working with UWP, Forms, or WPF GUI scripts from PowerShell; many of their Add_Click() and similar interaction events use script blocks in PowerShell as well.
 
-It seemed to break literally all mocks for that module’s commands. Very odd. But that’s what you get when you play with scopes!
+Anonymous Functions in the PowerShell Pipeline
+I’m sure many of you are familiar with ForEach-Object. It’s the pipeline equivalent to the familiar foreach ($i in $Collection) {} loop construct.
 
-The Solution
-As much as I’d like to say I was able to bully it into submission, I couldn’t. Something very fundamental was in play here; I suspect I triggered an almost sort of recursion in Pester’s mocking logic. It wasn’t built for this kind of abuse.
+What I think far fewer people are familiar with is that you can do something eerily similar to this with a simple script block.
 
-So what to do? Thankfully, I could create a proxy command that essentially just hid away the scope-breaking code. A bit of [System.Management.Automation.ProxyCommand]::Create() and some manual editing later, I came out with a new internal module command for executing the koans in the global scope, as though the user were invoking them directly, without my module getting in the way.
+1..100 | & {
+    process {
+        if ($_ % 2 -eq 0) { $_ }
+    }
+}
+Wait, what? Really? That’s a bit… odd. The & operator is used to tell PowerShell that, yes, we are deliberately invoking the script block as a command, not simply placing it as an object. This can also be done with script blocks stored in variables.
 
-Perfect. This command can, thankfully, be mocked, and wrapping the command sequence up in such a way is a particularly easy thing to abstract away.
+There are actually two modes of doing this, as well. The above construction will not allow you to define variables within it that can be used outside the script block. In other words, this will give you no result:
 
-This is the main body of the function I eventually came up with:
+1..100 | & {
+    begin { $a = 0 }
+    process {
+        if ($_ % 2 -eq 0) { $a += $_ }
+    }
+}
 
-$GlobalScope = [psmoduleinfo]::new($true)
+$a
+However, make one small change, and this suddenly becomes very curiously similar to ForEach-Object itself:
 
-& $GlobalScope {
-    param($Params)
+1..100 | . {
+    begin { $a = 0 }
+    process {
+        if ($_ % 2 -eq 0) { $a += $_ }
+    }
+}
 
-    Invoke-Pester @Params
-} @($PSBoundParameters)
+$a
+Thanks to the scope-merging capabilities of the dot-sourcing operator, variables that are defined inside the script block are also now available to the wider script.
+
+ForEach-Object does have some additional capabilities that make it worth the while, and it will also handle errors more effectively than a nameless script block. For a script block to do that, you would have to define a param() block, at least one parameter, and the [CmdletBinding] attribute would be required. Without those, the script block will be tricky to work with in terms of error and stream handling.
+
+However, for simple things or where speed is the primary concern, a script block can be far faster than your usual ForEach-Object command. Just mind the rough edges.
+
 Thanks for reading!
+
+Back to Homepage
