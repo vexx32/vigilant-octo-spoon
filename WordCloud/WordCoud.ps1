@@ -124,12 +124,24 @@ function New-WordCloud {
                 Sort-Object {Get-Random} |
                 Select-Object -First $MaxColors |
                 ForEach-Object {
-                    [Color]::FromKnownColor($_)
+                    if (-not $Monochrome) {
+                        [Color]::FromKnownColor($_)
+                    }
+                    else {
+                        $Brightness = [Color]::FromKnownColor($_).GetBrightness() * 255
+                        [Color]::FromArgb(1, $Brightness, $Brightness, $Brightness)
+                    }
                 }
         }
         else {
             $ColorList = $ColorSet | ForEach-Object {
-                [Color]::FromKnownColor($_)
+                if (-not $Monochrome) {
+                    [Color]::FromKnownColor($_)
+                }
+                else {
+                    $Brightness = [Color]::FromKnownColor($_).GetBrightness() * 255
+                    [Color]::FromArgb(1, $Brightness, $Brightness, $Brightness)
+                }
             }
         }
 
@@ -165,13 +177,13 @@ function New-WordCloud {
             $WordHeightTable[$Word] ++
         }
 
-        $HighestFrequency = $WordHeightTable.Values |
+        $HighestWordCountt = $WordHeightTable.Values |
             Measure-Object -Maximum |
             ForEach-Object -MemberName Maximum
 
         try {
             foreach ($Word in $WordHeightTable.Keys.Clone()) {
-                $WordHeightTable[$Word] = [Math]::Round( ($WordHeightTable[$Word] / $HighestFrequency) * $LargestSize)
+                $WordHeightTable[$Word] = [Math]::Round( ($WordHeightTable[$Word] / $HighestWordCountt) * $MaxFontSize)
 
                 $Font = [Font]::new(
                     $FontFamily,
@@ -220,13 +232,12 @@ function New-WordCloud {
 
             $WordRectangle = $null
             do {
-                $IsColliding = $false
-
                 if ($RadialDistance -gt $FinalImageSize.Height) {
                     continue words
                 }
-
+                $IsColliding = $false
                 $AngleIncrement = 360 / ( ($RadialDistance + 1) * $RadialGranularity / 10 )
+
                 for ($Angle = 0; $Angle -le 360; $Angle += $AngleIncrement) {
                     $Radians = Convert-ToRadians -Degrees $Angle
                     $Complex = [Complex]::FromPolarCoordinates($RadialDistance, $Radians)
@@ -234,13 +245,13 @@ function New-WordCloud {
                     if ($Complex -eq 0) {
                         $OffsetX = $WordSizeTable[$Word].Width / 1.5
                         $OffsetY = $WordSizeTable[$Word].Height / 1.5
-                        $Location = [PointF]::new($CentrePoint - $OffsetX, $CentrePoint - $OffsetY)
+                        $DrawLocation = [PointF]::new($CentrePoint - $OffsetX, $CentrePoint - $OffsetY)
                     }
                     else {
-                        $Location = [PointF]::new($CentrePoint + $Complex.Real, $CentrePoint + $Complex.Imaginary)
+                        $DrawLocation = [PointF]::new($CentrePoint + $Complex.Real, $CentrePoint + $Complex.Imaginary)
                     }
 
-                    $WordRectangle = [RectangleF]::new($Location, $WordSizeTable[$Word])
+                    $WordRectangle = [RectangleF]::new($DrawLocation, $WordSizeTable[$Word])
 
                     foreach ($Rectangle in $RectangleList) {
                         $IsColliding = (
@@ -275,7 +286,7 @@ function New-WordCloud {
                 $ColorIndex = 0
             }
 
-            $DrawingSurface.DrawString($Word, $Font, [SolidBrush]::new($Color), $Location)
+            $DrawingSurface.DrawString($Word, $Font, [SolidBrush]::new($Color), $DrawLocation)
         }
 
         $DrawingSurface.Flush()
