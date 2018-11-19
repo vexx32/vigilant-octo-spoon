@@ -25,7 +25,7 @@ function Convert-ToRadians {
 
 function New-WordCloud {
     [CmdletBinding()]
-    [Alias('wordcloud','wcloud')]
+    [Alias('wordcloud', 'wcloud')]
     param(
         [Parameter(Mandatory, Position = 0, ValueFromPipeline)]
         [Alias('Text', 'String', 'Words', 'Document', 'Page')]
@@ -34,7 +34,7 @@ function New-WordCloud {
         $InputString,
 
         [Parameter(Mandatory, Position = 1)]
-        [Alias('OutFile','ExportPath','ImagePath')]
+        [Alias('OutFile', 'ExportPath', 'ImagePath')]
         [ValidateScript(
             { Test-Path -IsValid $_ -PathType Leaf }
         )]
@@ -52,6 +52,21 @@ function New-WordCloud {
         $MaxColors,
 
         [Parameter()]
+        [Alias('FontFace')]
+        [string]
+        $FontFamily = 'Consolas',
+
+        [Parameter()]
+        [Alias('MaxWordSize')]
+        [double]
+        $MaxFontSize = 200,
+
+        [Parameter()]
+        [Alias('GraphicsUnit', 'Unit')]
+        [GraphicsUnit]
+        $SizeUnit = [GraphicsUnit]::Point,
+
+        [Parameter()]
         [ValidateRange(1, 20)]
         $DistanceStep = 5,
 
@@ -60,8 +75,9 @@ function New-WordCloud {
         $RadialGranularity = 15,
 
         [Parameter()]
+        [AllowNull()]
         [Alias('BackgroundColour')]
-        [KnownColor]
+        [Nullable[KnownColor]]
         $BackgroundColor = [KnownColor]::Black,
 
         [Parameter()]
@@ -69,111 +85,122 @@ function New-WordCloud {
         [Alias('Greyscale', 'Grayscale')]
         $Monochrome
     )
-}
-$Text = Get-Content -Path "$PSScriptRoot\Test.txt"
+    begin {
+        $ExcludedWords = @(
+            'a', 'about', 'above', 'after', 'again', 'against', 'all', 'also', 'am', 'an', 'and', 'any', 'are', 'aren''t', 'as',
+            'at', 'be', 'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but', 'by', 'can', 'can''t',
+            'cannot', 'com', 'could', 'couldn''t', 'did', 'didn''t', 'do', 'does', 'doesn''t', 'doing', 'don''t', 'down',
+            'during', 'each', 'else', 'ever', 'few', 'for', 'from', 'further', 'get', 'had', 'hadn''t', 'has', 'hasn''t',
+            'have', 'haven''t', 'having', 'he', 'he''d', 'he''ll', 'he''s', 'hence', 'her', 'here', 'here''s', 'hers',
+            'herself', 'him', 'himself', 'his', 'how', 'how''s', 'however', 'http', 'i', 'i''d', 'i''ll', 'i''m', 'i''ve', 'if',
+            'in', 'into', 'is', 'isn''t', 'it', 'it''s', 'its', 'itself', 'just', 'k', 'let''s', 'like', 'me', 'more', 'most',
+            'mustn''t', 'my', 'myself', 'no', 'nor', 'not', 'of', 'off', 'on', 'once', 'only', 'or', 'other', 'otherwise',
+            'ought', 'our', 'ours', 'ourselves', 'out', 'over', 'own', 'r', 'same', 'shall', 'shan''t', 'she', 'she''d',
+            'she''ll', 'she''s', 'should', 'shouldn''t', 'since', 'so', 'some', 'such', 'than', 'that', 'that''s', 'the',
+            'their', 'theirs', 'them', 'themselves', 'then', 'there', 'there''s', 'therefore', 'these', 'they', 'they''d',
+            'they''ll', 'they''re', 'they''ve', 'this', 'those', 'through', 'to', 'too', 'under', 'until', 'up', 'very', 'was',
+            'wasn''t', 'we', 'we''d', 'we''ll', 'we''re', 'we''ve', 'were', 'weren''t', 'what', 'what''s', 'when', 'when''s',
+            'where', 'where''s', 'which', 'while', 'who', 'who''s', 'whom', 'why', 'why''s', 'with', 'won''t', 'would',
+            'wouldn''t', 'www', 'you', 'you''d', 'you''ll', 'you''re', 'you''ve', 'your', 'yours', 'yourself', 'yourselves'
+        ) -join '|'
 
-$ExcludedWords = @(
-    'a', 'about', 'above', 'after', 'again', 'against', 'all', 'also', 'am', 'an', 'and', 'any', 'are', 'aren''t', 'as',
-    'at', 'be', 'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but', 'by', 'can', 'can''t',
-    'cannot', 'com', 'could', 'couldn''t', 'did', 'didn''t', 'do', 'does', 'doesn''t', 'doing', 'don''t', 'down',
-    'during', 'each', 'else', 'ever', 'few', 'for', 'from', 'further', 'get', 'had', 'hadn''t', 'has', 'hasn''t',
-    'have', 'haven''t', 'having', 'he', 'he''d', 'he''ll', 'he''s', 'hence', 'her', 'here', 'here''s', 'hers',
-    'herself', 'him', 'himself', 'his', 'how', 'how''s', 'however', 'http', 'i', 'i''d', 'i''ll', 'i''m', 'i''ve', 'if',
-    'in', 'into', 'is', 'isn''t', 'it', 'it''s', 'its', 'itself', 'just', 'k', 'let''s', 'like', 'me', 'more', 'most',
-    'mustn''t', 'my', 'myself', 'no', 'nor', 'not', 'of', 'off', 'on', 'once', 'only', 'or', 'other', 'otherwise',
-    'ought', 'our', 'ours', 'ourselves', 'out', 'over', 'own', 'r', 'same', 'shall', 'shan''t', 'she', 'she''d',
-    'she''ll', 'she''s', 'should', 'shouldn''t', 'since', 'so', 'some', 'such', 'than', 'that', 'that''s', 'the',
-    'their', 'theirs', 'them', 'themselves', 'then', 'there', 'there''s', 'therefore', 'these', 'they', 'they''d',
-    'they''ll', 'they''re', 'they''ve', 'this', 'those', 'through', 'to', 'too', 'under', 'until', 'up', 'very', 'was',
-    'wasn''t', 'we', 'we''d', 'we''ll', 'we''re', 'we''ve', 'were', 'weren''t', 'what', 'what''s', 'when', 'when''s',
-    'where', 'where''s', 'which', 'while', 'who', 'who''s', 'whom', 'why', 'why''s', 'with', 'won''t', 'would',
-    'wouldn''t', 'www', 'you', 'you''d', 'you''ll', 'you''re', 'you''ve', 'your', 'yours', 'yourself', 'yourselves'
-) -join '|'
+        $SplitChars = [char[]]" `n.,`"?!{}[]:'()`“`”"
+        $WordList = [List[string]]::new()
 
-$SplitChars = [char[]]" `n.,`"?!{}[]:'()`“`”"
-$WordList = $Text.Split($SplitChars, [StringSplitOptions]::RemoveEmptyEntries).Where{
-    $_ -notmatch "^$ExcludedWords$|^[^a-z]+$"
-}
+        $WordHeightTable = @{}
+        $WordSizeTable = @{}
 
-$WordHeight = @{}
-foreach ($Word in $WordList) {
-    # Count occurrence of each word
-    $WordHeight[$Word] = $WordHeight[$Word] + 1
-}
+        # Create a graphics object to measure the text's width and height.
+        $DummyImage = [Bitmap]::new(1, 1)
 
-[double]$HighestFrequency = $WordHeight.Values | Measure-Object -Maximum | ForEach-Object -MemberName Maximum
-[double]$LargestSize = 200 # in Points
+        $TotalSize = [SizeF]::Empty
 
-foreach ($Word in $WordHeight.Keys.Clone()) {
-    # Replace occurrence number with size number
-    $WordHeight[$Word] = [Math]::Round( ($WordHeight[$Word] / $HighestFrequency) * $LargestSize)
-}
-
-# Dummy image to use for measurements
-[Bitmap]$Image = [Bitmap]::new(1, 1)
-
-$FontFamily = "Consolas"
-
-$BackgroundColor = [Color]::Black
-
-# Create a graphics object to measure the text's width and height.
-[Graphics] $Graphics = [Graphics]::FromImage($Image)
-
-[SizeF]$TotalSize = [SizeF]::Empty
-$WordSizes = @{}
-foreach ($Word in $WordHeight.Keys) {
-    $Font = [Font]::new(
-        $FontFamily,
-        $WordHeight[$Word],
-        [FontStyle]::Regular,
-        [GraphicsUnit]::Point
-    )
-    $WordSizes[$Word] = $Graphics.MeasureString($Word, $Font)
-    $TotalSize += $WordSizes[$Word]
-}
-$Graphics.Flush()
-$Graphics.Dispose()
-
-# Keep image square
-$SquareSizeLength = ($TotalSize.Height + $TotalSize.Width) / 2
-$TotalSize = [SizeF]::new($SquareSizeLength / 2, $SquareSizeLength / 2)
-
-[Size]$FinalImageSize = [Size]::new($TotalSize.Width, $TotalSize.Height)
-Write-Host $FinalImageSize
-
-$FinalImage = [Bitmap]::new($Image, $FinalImageSize)
-[Graphics]$DrawingSurface = [Graphics]::FromImage($FinalImage)
-
-$DrawingSurface.Clear($BackgroundColor)
-$DrawingSurface.SmoothingMode = [Drawing2D.SmoothingMode]::AntiAlias
-$DrawingSurface.TextRenderingHint = [Text.TextRenderingHint]::AntiAlias
-
-[List[KnownColor]]$ColorList = [KnownColor[]](
-    [Enum]::GetValues([KnownColor]) |
-        Where-Object {
-            $_ -notmatch 'black|dark' -and
-            [Color]::FromKnownColor([KnownColor]$_).GetSaturation() -gt 0.5
+        $ColorList = [KnownColor].GetEnumNames().Where{
+            if ($BackgroundColor) {
+                $_ -notmatch $BackgroundColor -and
+                [Color]::FromKnownColor([KnownColor]$_).GetSaturation() -gt 0.5
+            }
+            else {
+                [Color]::FromKnownColor([KnownColor]$_).GetSaturation() -gt 0.5
+            }
         } |
-        Sort-Object {
-            $Color = [Color]::FromKnownColor([KnownColor]$_)
-            $Value = $Color.GetBrightness()
-            $Random = (-$Value..$Value | Get-Random) / (1 - $Color.GetSaturation())
-            $Value + $Random
-        } -Descending
-)
+            Sort-Object -Descending {
+                $Value = [Color]::FromKnownColor([KnownColor]$_).GetBrightness()
+                $Random = (-$Value..$Value | Get-Random) / (1 - $Color.GetSaturation())
+                $Value + $Random
+            }
 
-$Centre = $FinalImageSize.Height / 2
-$OrderedWords = $WordHeight.Keys |
-    Sort-Object { $WordSizes[$_].Width * $WordSizes[$_].Height } -Descending |
-    Select-Object -First 100
+        $RectangleList = [List[RectangleF]]::new()
+    }
+    process {
+        $WordList.AddRange(
+            $InputString.Split($SplitChars, [StringSplitOptions]::RemoveEmptyEntries).Where{
+                $_ -notmatch "^$ExcludedWords$|^[^a-z]+$"
+            } -as [string[]]
+        )
+    }
+    end {
+        foreach ($Word in $WordList) {
+            # Count occurrence of each word
+            $WordHeightTable[$Word] ++
+        }
 
-$RectangleList = [List[RectangleF]]::new()
+        $HighestFrequency = $WordHeightTable.Values |
+            Measure-Object -Maximum |
+            ForEach-Object -MemberName Maximum
+
+        try {
+            foreach ($Word in $WordHeightTable.Keys.Clone()) {
+                $WordPointHeight = [Math]::Round( ($WordHeightTable[$Word] / $HighestFrequency) * $LargestSize)
+
+                $Font = [Font]::new(
+                    $FontFamily,
+                    $WordPointHeight,
+                    [FontStyle]::Regular,
+                    [GraphicsUnit]::Point
+                )
+
+                $Graphics = [Graphics]::FromImage($DummyImage)
+                $WordSizeTable[$Word] = $Graphics.MeasureString($Word, $Font)
+                $TotalSize += $WordSizeTable[$Word]
+            }
+        }
+        finally {
+            $Graphics.Dispose()
+        }
+
+        $SortedWordList = $WordHeightTable.Keys |
+            Sort-Object -Descending { $WordSizeTable[$_].Width * $WordSizeTable[$_].Height } |
+            Select-Object -First 100
+
+        # Keep image square
+        $SideLength = ($TotalSize.Height + $TotalSize.Width) / 2
+        $TotalSize = [SizeF]::new($SideLength / 2, $SideLength / 2)
+
+        $FinalImageSize = $TotalSize.ToSize()
+        $Centre = $FinalImageSize.Height / 2
+        Write-Verbose "Final Image size will be: $FinalImageSize"
+
+        $WordCloudImage = [Bitmap]::new($DummyImage, $FinalImageSize)
+        $DrawingSurface = [Graphics]::FromImage($WordCloudImage)
+
+        if ($BackgroundColor) {
+            $DrawingSurface.Clear([Color]::FromKnownColor($BackgroundColor))
+        }
+        $DrawingSurface.SmoothingMode = [Drawing2D.SmoothingMode]::AntiAlias
+        $DrawingSurface.TextRenderingHint = [Text.TextRenderingHint]::AntiAlias
+
+    }
+}
+
+
+
 $Distance = 0
 $ColorIndex = 0
-:words foreach ($Word in $OrderedWords) {
+:words foreach ($Word in $SortedWordList) {
     $Font = [Font]::new(
         $FontFamily,
-        $WordHeight[$Word],
+        $WordHeightTable[$Word],
         [FontStyle]::Regular,
         [GraphicsUnit]::Point
     )
@@ -192,15 +219,15 @@ $ColorIndex = 0
             $Complex = [Complex]::FromPolarCoordinates($Distance, $Radians)
 
             if ($Complex -eq 0) {
-                $OffsetX = $WordSizes[$Word].Width / 1.5
-                $OffsetY = $WordSizes[$Word].Height / 1.5
+                $OffsetX = $WordSizeTable[$Word].Width / 1.5
+                $OffsetY = $WordSizeTable[$Word].Height / 1.5
                 $Location = [PointF]::new($Centre - $OffsetX, $Centre - $OffsetY)
             }
             else {
                 $Location = [PointF]::new($Centre + $Complex.Real, $Centre + $Complex.Imaginary)
             }
 
-            $Rect = [RectangleF]::new($Location, $WordSizes[$Word])
+            $Rect = [RectangleF]::new($Location, $WordSizeTable[$Word])
 
             foreach ($Rectangle in $RectangleList) {
                 $IsColliding = (
@@ -239,7 +266,7 @@ $ColorIndex = 0
 }
 
 $DrawingSurface.Flush()
-$FinalImage.Save("$PSScriptRoot\test.png", [Imaging.ImageFormat]::Png)
+$WordCloudImage.Save("$PSScriptRoot\test.png", [Imaging.ImageFormat]::Png)
 
 # Link to Python word cloud position figuring code:
 # https://github.com/amueller/word_cloud/blob/b79b3d69a65643dbd421a027e66760a4398e91b3/wordcloud/wordcloud.py#L471
