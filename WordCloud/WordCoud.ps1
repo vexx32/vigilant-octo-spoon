@@ -56,7 +56,7 @@ $BackgroundColor = [Color]::Black
 # Create a graphics object to measure the text's width and height.
 [Graphics] $Graphics = [Graphics]::FromImage($Image)
 
-$TotalSize = [SizeF]::Empty
+[SizeF]$TotalSize = [SizeF]::Empty
 $WordSizes = @{}
 foreach ($Word in $WordHeight.Keys) {
     $Font = [Font]::new(
@@ -70,6 +70,10 @@ foreach ($Word in $WordHeight.Keys) {
 }
 $Graphics.Flush()
 $Graphics.Dispose()
+
+# Keep image square
+$SquareSizeLength = ($TotalSize.Height + $TotalSize.Width) / 2
+$TotalSize = [SizeF]::new($SquareSizeLength / 2, $SquareSizeLength / 2)
 
 [Size]$FinalImageSize = [Size]::new($TotalSize.Width, $TotalSize.Height)
 Write-Host $FinalImageSize
@@ -120,7 +124,7 @@ foreach ($Word in $WordHeight.Keys) {
 }
 
 $DrawingSurface.Flush()
-$FinalImage.Save('C:\Users\Joel\Desktop\TestImage.png', [Imaging.ImageFormat]::Png)
+$FinalImage.Save("$PSScriptRoot\test.png", [Imaging.ImageFormat]::Png)
 
 # Link to Python word cloud position figuring code:
 # https://github.com/amueller/word_cloud/blob/b79b3d69a65643dbd421a027e66760a4398e91b3/wordcloud/wordcloud.py#L471
