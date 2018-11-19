@@ -97,7 +97,8 @@ $RectangleTable = @{}
         Where-Object {$_ -notmatch 'black|dark'} |
         Sort-Object {
             $Random = -10..10 | Get-Random
-            [Color]::FromKnownColor([KnownColor]$_).GetBrightness() + $Random
+            $Color = [Color]::FromKnownColor([KnownColor]$_)
+            $Color.GetBrightness() + $Color.GetSaturation() + $Random
         } -Descending
 )
 
