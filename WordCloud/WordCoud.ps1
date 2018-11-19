@@ -218,17 +218,17 @@ function New-WordCloud {
                 [GraphicsUnit]::Point
             )
 
-            $Rect = $null
+            $WordRectangle = $null
             do {
                 $IsColliding = $false
 
-                if ($RadialDistance -gt $CentrePoint) {
+                if ($RadialDistance -gt $FinalImageSize.Height) {
                     continue words
                 }
 
-                $AngleIncrement = ($RadialDistance + 1) * ($RadialGranularity / 10)
-                for ($Angle = 0; $Angle -le 360; $Angle += 360 / $AngleIncrement) {
-                    $Radians = $Angle | Convert-ToRadians
+                $AngleIncrement = 360 / ( ($RadialDistance + 1) * $RadialGranularity / 10 )
+                for ($Angle = 0; $Angle -le 360; $Angle += $AngleIncrement) {
+                    $Radians = Convert-ToRadians -Degrees $Angle
                     $Complex = [Complex]::FromPolarCoordinates($RadialDistance, $Radians)
 
                     if ($Complex -eq 0) {
@@ -240,15 +240,15 @@ function New-WordCloud {
                         $Location = [PointF]::new($CentrePoint + $Complex.Real, $CentrePoint + $Complex.Imaginary)
                     }
 
-                    $Rect = [RectangleF]::new($Location, $WordSizeTable[$Word])
+                    $WordRectangle = [RectangleF]::new($Location, $WordSizeTable[$Word])
 
                     foreach ($Rectangle in $RectangleList) {
                         $IsColliding = (
-                            $Rect.IntersectsWith($Rectangle) -or
-                            $Rect.Top -lt 0 -or
-                            $Rect.Bottom -gt $FinalImageSize.Height -or
-                            $Rect.Left -lt 0 -or
-                            $Rect.Right -gt $FinalImageSize.Width
+                            $WordRectangle.IntersectsWith($Rectangle) -or
+                            $WordRectangle.Top -lt 0 -or
+                            $WordRectangle.Bottom -gt $FinalImageSize.Height -or
+                            $WordRectangle.Left -lt 0 -or
+                            $WordRectangle.Right -gt $FinalImageSize.Width
                         )
 
                         if ($IsColliding) {
@@ -265,7 +265,7 @@ function New-WordCloud {
                     $RadialDistance += 5
                 }
             } while ($IsColliding)
-            $RectangleList.Add($Rect)
+            $RectangleList.Add($WordRectangle)
 
             $KnownColor = $ColorList[$ColorIndex]
             $Color = [Color]::FromKnownColor($KnownColor)
