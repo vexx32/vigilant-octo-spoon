@@ -1,5 +1,6 @@
 using namespace System.Drawing
 using namespace System.Collections.Generic
+using namespace System.Numerics
 
 # PowerShell Core uses System.Drawing.Common assembly instead of System.Drawing
 if ($PSEdition -eq 'Core') {
@@ -7,6 +8,19 @@ if ($PSEdition -eq 'Core') {
 }
 else {
     Add-Type -AssemblyName 'System.Drawing'
+}
+
+function Convert-ToRadians {
+    [CmdletBinding()]
+    param(
+        [Parameter(Position = 0, ValueFromPipeline)]
+        [ValidateRange(0, 360)]
+        [double]
+        $Degrees
+    )
+    process {
+        ([Math]::PI / 180) * $Degrees
+    }
 }
 
 $Text = Get-Content -Path "$PSScriptRoot\Test.txt"
@@ -30,7 +44,6 @@ $ExcludedWords = @(
 ) -join '|'
 
 $SplitChars = [char[]]" `n.,`"?!{}[]:'()"
-$ForbiddenChars = '[^a-z]'
 $WordList = $Text.Split($SplitChars, [StringSplitOptions]::RemoveEmptyEntries).Where{
     $_ -notmatch "^$ExcludedWords$|^[^a-z]+$"
 }
@@ -88,46 +101,80 @@ $DrawingSurface.Clear($BackgroundColor)
 $DrawingSurface.SmoothingMode = [Drawing2D.SmoothingMode]::AntiAlias
 $DrawingSurface.TextRenderingHint = [Text.TextRenderingHint]::AntiAlias
 
-$x = $FinalImageSize.Width / 2
-$y = $FinalImageSize.Height / 2
-
-$RectangleTable = @{}
 [List[KnownColor]]$ColorList = [KnownColor[]](
     [Enum]::GetValues([KnownColor])|
-        Where-Object {$_ -notmatch 'black|dark'} |
+        Where-Object {
+            $_ -notmatch 'black|dark' -and
+            [Color]::FromKnownColor([KnownColor]$_).GetSaturation() -gt 0.5
+        } |
         Sort-Object {
-            $Random = -10..10 | Get-Random
             $Color = [Color]::FromKnownColor([KnownColor]$_)
-            $Color.GetBrightness() + $Color.GetSaturation() + $Random
+            $Value = $Color.GetBrightness()
+            $Random = (-$Value..$Value | Get-Random) / (1 - $Color.GetSaturation())
+            $Value + $Random
         } -Descending
 )
 
-foreach ($Word in $WordHeight.Keys) {
+$Centre = $FinalImageSize.Height / 2
+$OrderedWords = $WordHeight.Keys | Sort-Object { $WordHeight[$_] } -Descending
+
+$RectangleList = [List[RectangleF]]::new()
+$Distance = 0
+:words foreach ($Word in $OrderedWords) {
     $Font = [Font]::new(
         $FontFamily,
         $WordHeight[$Word],
         [FontStyle]::Regular,
         [GraphicsUnit]::Point
     )
-    $MaxX = $FinalImageSize.Width - $WordSizes[$Word].Width
-    $MaxY = $FinalImageSize.Height - $WordSizes[$Word].Height
 
+    $Rect = $null
     do {
         $IsColliding = $false
 
-        $StartX = 0..$MaxX | Get-Random
-        $StartY = 0..$MaxY | Get-Random
-        [PointF]$Location = [PointF]::new($StartX, $StartY)
-        $Rect = [RectangleF]::new($Location, $WordSizes[$Word])
+        if ($Distance -gt $Centre) {
+            continue words
+        }
 
-        foreach ($Rectangle in $RectangleTable.Values) {
-            if ($Rect.IntersectsWith($Rectangle)) {
-                $IsColliding = $true
+        for ($Angle = 0; $Angle -le 360; $Angle += 10) {
+            $Radians = $Angle | Convert-ToRadians
+            $Complex = [Complex]::FromPolarCoordinates($Distance, $Radians)
+
+            if ($Complex -eq 0) {
+                $OffsetX = $WordSizes[$Word].Width / 1.5
+                $OffsetY = $WordSizes[$Word].Height / 1.5
+                $Location = [PointF]::new($Centre - $OffsetX, $Centre - $OffsetY)
+            }
+            else {
+                $Location = [PointF]::new($Centre + $Complex.Real, $Centre + $Complex.Imaginary)
+            }
+
+            $Rect = [RectangleF]::new($Location, $WordSizes[$Word])
+
+            foreach ($Rectangle in $RectangleList) {
+                $IsColliding = (
+                    $Rect.IntersectsWith($Rectangle) -or
+                    $Rect.Top -lt 0 -or
+                    $Rect.Bottom -gt $FinalImageSize.Height -or
+                    $Rect.Left -lt 0 -or
+                    $Rect.Right -gt $FinalImageSize.Width
+                )
+
+                if ($IsColliding) {
+                    break
+                }
+            }
+
+            if (!$IsColliding) {
+                break
             }
         }
-    } while ($IsColliding)
 
-    $RectangleTable[$Word] = $Rect
+        if ($IsColliding) {
+            $Distance += 5
+        }
+    } while ($IsColliding)
+    $RectangleList.Add($Rect)
 
     $KnownColor = $ColorList[0]
     $ColorList.RemoveAt(0)
