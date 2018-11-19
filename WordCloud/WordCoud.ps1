@@ -142,14 +142,14 @@ function New-WordCloud {
                 }
             }
         }
-
+        $MinSaturation = if ($Monochrome) { 0 } else { 0.5 }
         $ColorList = $ColorList | Where-Object {
             if ($BackgroundColor) {
                 $_.Name -notmatch $BackgroundColor -and
-                $_.GetSaturation() -gt 0.5
+                $_.GetSaturation() -ge $MinSaturation
             }
             else {
-                $_.GetSaturation() -gt 0.5
+                $_.GetSaturation() -ge $MinSaturation
             }
         } | Sort-Object -Descending {
             $Value = $_.GetBrightness()
@@ -272,7 +272,7 @@ function New-WordCloud {
                 }
 
                 if ($IsColliding) {
-                    $RadialDistance += 5
+                    $RadialDistance += $DistanceStep
                 }
             } while ($IsColliding)
 
