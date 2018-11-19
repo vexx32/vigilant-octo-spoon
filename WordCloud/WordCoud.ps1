@@ -119,6 +119,8 @@ function New-WordCloud {
 
         $TotalSize = [SizeF]::Empty
 
+        $MaxColors = if ($PSBoundParameters.ContainsKey('MaxColors')) { $MaxColors } else { [int]::MaxValue }
+
         if ($MaxColors) {
             $ColorList = $ColorSet |
                 Sort-Object {Get-Random} |
@@ -132,17 +134,6 @@ function New-WordCloud {
                         [Color]::FromArgb(1, $Brightness, $Brightness, $Brightness)
                     }
                 }
-        }
-        else {
-            $ColorList = $ColorSet | ForEach-Object {
-                if (-not $Monochrome) {
-                    [Color]::FromKnownColor($_)
-                }
-                else {
-                    $Brightness = [Color]::FromKnownColor($_).GetBrightness() * 255
-                    [Color]::FromArgb(1, $Brightness, $Brightness, $Brightness)
-                }
-            }
         }
 
         $ColorList = $ColorList | Where-Object {
