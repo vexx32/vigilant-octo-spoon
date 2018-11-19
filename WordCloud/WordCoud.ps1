@@ -186,8 +186,8 @@ function New-WordCloud {
                 $Font = [Font]::new(
                     $FontFamily,
                     $WordHeightTable[$Word],
-                    [FontStyle]::Regular,
-                    [GraphicsUnit]::Point
+                    $FontStyle,
+                    $SizeUnit
                 )
 
                 $Graphics = [Graphics]::FromImage($DummyImage)
@@ -224,8 +224,8 @@ function New-WordCloud {
             $Font = [Font]::new(
                 $FontFamily,
                 $WordHeightTable[$Word],
-                [FontStyle]::Regular,
-                [GraphicsUnit]::Point
+                $FontStyle,
+                $SizeUnit
             )
 
             $WordRectangle = $null
