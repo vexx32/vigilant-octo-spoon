@@ -1,4 +1,5 @@
 using namespace System.Drawing
+using namespace System.Collections.Generic
 
 # PowerShell Core uses System.Drawing.Common assembly instead of System.Drawing
 if ($PSEdition -eq 'Core') {
@@ -28,9 +29,11 @@ $ExcludedWords = @(
     'wouldn''t', 'www', 'you', 'you''d', 'you''ll', 'you''re', 'you''ve', 'your', 'yours', 'yourself', 'yourselves'
 ) -join '|'
 
-$SplitChars = [char[]]( ' ', "`n" )
+$SplitChars = [char[]]" `n.,`"?!{}[]:'()"
 $ForbiddenChars = '[^a-z]'
-$WordList = $Text.Split($SplitChars, [StringSplitOptions]::RemoveEmptyEntries).Where{ $_ -notmatch "^$ExcludedWords$|^[^a-z]+$" }
+$WordList = $Text.Split($SplitChars, [StringSplitOptions]::RemoveEmptyEntries).Where{
+    $_ -notmatch "^$ExcludedWords$|^[^a-z]+$"
+}
 
 $WordHeight = @{}
 foreach ($Word in $WordList) {
@@ -89,6 +92,14 @@ $x = $FinalImageSize.Width / 2
 $y = $FinalImageSize.Height / 2
 
 $RectangleTable = @{}
+[List[KnownColor]]$ColorList = [KnownColor[]](
+    [Enum]::GetValues([KnownColor])|
+        Where-Object {$_ -notmatch 'black|dark'} |
+        Sort-Object {
+            $Random = -10..10 | Get-Random
+            [Color]::FromKnownColor([KnownColor]$_).GetBrightness() + $Random
+        } -Descending
+)
 
 foreach ($Word in $WordHeight.Keys) {
     $Font = [Font]::new(
@@ -117,8 +128,9 @@ foreach ($Word in $WordHeight.Keys) {
 
     $RectangleTable[$Word] = $Rect
 
-    $RandomColor = [Enum]::GetValues([KnownColor]) | Where-Object {$_ -notmatch 'black|dark'} | Get-Random
-    $Color = [Color]::FromKnownColor([KnownColor]$RandomColor)
+    $KnownColor = $ColorList[0]
+    $ColorList.RemoveAt(0)
+    $Color = [Color]::FromKnownColor($KnownColor)
 
     $DrawingSurface.DrawString($Word, $Font, [SolidBrush]::new($Color), $Location)
 }
