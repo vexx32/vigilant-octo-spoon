@@ -29,7 +29,7 @@ function New-WordCloud {
     param(
         [Parameter(Mandatory, Position = 0, ValueFromPipeline)]
         [Alias('Text', 'String', 'Words', 'Document', 'Page')]
-        [ValidateNotNullOrEmpty()]
+        [AllowEmptyString()]
         [string[]]
         $InputString,
 
@@ -90,6 +90,13 @@ function New-WordCloud {
         $Monochrome
     )
     begin {
+        if (-not (Test-Path -Path $Path)) {
+            $Path = (New-Item -ItemType File -Path $Path).FullName
+        }
+        else {
+            $Path = (Get-Item -Path $Path).FullName
+        }
+
         $ExcludedWords = @(
             'a', 'about', 'above', 'after', 'again', 'against', 'all', 'also', 'am', 'an', 'and', 'any', 'are', 'aren''t', 'as',
             'at', 'be', 'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but', 'by', 'can', 'can''t',
@@ -126,29 +133,29 @@ function New-WordCloud {
                 Sort-Object {Get-Random} |
                 Select-Object -First $MaxColors |
                 ForEach-Object {
-                    if (-not $Monochrome) {
-                        [Color]::FromKnownColor($_)
-                    }
-                    else {
-                        $Brightness = [Color]::FromKnownColor($_).GetBrightness() * 255
-                        [Color]::FromArgb(1, $Brightness, $Brightness, $Brightness)
-                    }
+                if (-not $Monochrome) {
+                    [Color]::FromKnownColor($_)
                 }
+                else {
+                    $Brightness = [Color]::FromKnownColor($_).GetBrightness() * 255
+                    [Color]::FromArgb(1, $Brightness, $Brightness, $Brightness)
+                }
+            }
         }
 
         $ColorList = $ColorList | Where-Object {
-                if ($BackgroundColor) {
-                    $_.Name -notmatch $BackgroundColor -and
-                    $_.GetSaturation() -gt 0.5
-                }
-                else {
-                    $_.GetSaturation() -gt 0.5
-                }
-            } | Sort-Object -Descending {
-                $Value = $_.GetBrightness()
-                $Random = (-$Value..$Value | Get-Random) / (1 - $_.GetSaturation())
-                $Value + $Random
+            if ($BackgroundColor) {
+                $_.Name -notmatch $BackgroundColor -and
+                $_.GetSaturation() -gt 0.5
             }
+            else {
+                $_.GetSaturation() -gt 0.5
+            }
+        } | Sort-Object -Descending {
+            $Value = $_.GetBrightness()
+            $Random = (-$Value..$Value | Get-Random) / (1 - $_.GetSaturation())
+            $Value + $Random
+        }
 
         $RectangleList = [List[RectangleF]]::new()
 
@@ -234,12 +241,13 @@ function New-WordCloud {
                     $Complex = [Complex]::FromPolarCoordinates($RadialDistance, $Radians)
 
                     if ($Complex -eq 0) {
+                        # Offset slighty from center
                         $OffsetX = $WordSizeTable[$Word].Width / 1.5
                         $OffsetY = $WordSizeTable[$Word].Height / 1.5
-                        $DrawLocation = [PointF]::new($CentrePoint - $OffsetX, $CentrePoint - $OffsetY)
+                        $DrawLocation = [PointF]::new($CentrePoint.X - $OffsetX, $CentrePoint.Y - $OffsetY)
                     }
                     else {
-                        $DrawLocation = [PointF]::new($CentrePoint + $Complex.Real, $CentrePoint + $Complex.Imaginary)
+                        $DrawLocation = [PointF]::new($CentrePoint.X + $Complex.Real, $CentrePoint.Y + $Complex.Imaginary)
                     }
 
                     $WordRectangle = [RectangleF]::new($DrawLocation, $WordSizeTable[$Word])
@@ -267,10 +275,10 @@ function New-WordCloud {
                     $RadialDistance += 5
                 }
             } while ($IsColliding)
+
             $RectangleList.Add($WordRectangle)
 
-            $KnownColor = $ColorList[$ColorIndex]
-            $Color = [Color]::FromKnownColor($KnownColor)
+            $Color = $ColorList[$ColorIndex]
 
             $ColorIndex++
             if ($ColorIndex -ge $ColorList.Count) {
