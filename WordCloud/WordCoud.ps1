@@ -289,7 +289,7 @@ function New-WordCloud {
         }
 
         $DrawingSurface.Flush()
-        $WordCloudImage.Save("$PSScriptRoot\test.png", [Imaging.ImageFormat]::Png)
+        $WordCloudImage.Save($Path, [Imaging.ImageFormat]::Png)
     }
 }
 
