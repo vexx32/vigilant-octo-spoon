@@ -224,12 +224,16 @@ function New-WordCloud {
             $WordHeightTable.Remove($Word)
         }
 
+        $SortedWordList = $WordHeightTable.GetEnumerator().Name |
+            Sort-Object -Descending {
+                $WordHeightTable[$_]
+            } | Select-Object -First 50
+
         $HighestWordCount, $AverageWordFrequency = $WordHeightTable.GetEnumerator() |
             Measure-Object -Property Value -Average -Maximum |
             ForEach-Object {$_.Maximum, $_.Average}
 
-
-        $MaxFontSize = [Math]::Round($ImageSize / (6 * ($AverageWordFrequency / $WordHeightTable.PSObject.BaseObject.Count)) )
+        $MaxFontSize = [Math]::Round($ImageSize / (8 * $AverageWordFrequency) )
         Write-Verbose "Unique Words Count: $($WordHeightTable.PSObject.BaseObject.Count)"
         Write-Verbose "Highest Word Frequency: $HighestWordCount"
         Write-Verbose "Max Font Size: $MaxFontSize"
@@ -237,11 +241,10 @@ function New-WordCloud {
         try {
             $Graphics = [Graphics]::FromImage($DummyImage)
 
-            foreach ($Word in $WordHeightTable.Clone().GetEnumerator().Name) {
+            foreach ($Word in $SortedWordList) {
                 $WordHeightTable[$Word] = [Math]::Round( ($WordHeightTable[$Word] / $HighestWordCount) * $MaxFontSize)
-                if ($WordHeightTable[$Word] -lt 8) {
-                    continue
-                }
+                if ($WordHeightTable[$Word] -lt 8) { continue }
+
                 $Font = [Font]::new(
                     $FontFamily,
                     $WordHeightTable[$Word],
@@ -259,13 +262,6 @@ function New-WordCloud {
                 $Graphics.Dispose()
             }
         }
-
-        $SortedWordList = $WordHeightTable.GetEnumerator().Name |
-            Where-Object {$WordHeightTable[$_] -ge 8}
-            Sort-Object -Descending {
-                ($WordSizeTable[$_].Width * $WordSizeTable[$_].Height) +
-                    (Get-Random -Minimum ($MaxFontSize / 3) -Maximum ($MaxFontSize / 1.5) )
-            } | Select-Object -First 100
 
         #[SizeF]$FocalWord = $WordSizeTable[$SortedWordList[0]]
         #$WordSizeTable[$SortedWordList[0]] = [SizeF]::new($FocalWord.Width, $FocalWord.Height * 0.6)
