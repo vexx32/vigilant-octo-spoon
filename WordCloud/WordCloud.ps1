@@ -256,7 +256,7 @@ function New-WordCloud {
             $WordHeightTable | Out-String | Write-Verbose
         }
         catch {
-            $PSCmdlet.ThrowTerminatingError($_)
+            throw $_
         }
         finally {
             if ($Graphics) {
@@ -284,7 +284,7 @@ function New-WordCloud {
             $DrawingSurface.TextRenderingHint = [Text.TextRenderingHint]::AntiAlias
 
             $RadialScanCount = 0
-            :words foreach ($Word in $SortedWordList) {
+            :words foreach ($Word in $WordSizeTable.GetEnumerator().Name) {
                 $Font = [Font]::new(
                     $FontFamily,
                     $WordHeightTable[$Word],
@@ -357,7 +357,7 @@ function New-WordCloud {
                             $Complex.Imaginary + $CentrePoint.Y - $OffsetY
                         )
 
-                        $WordRectangle = [RectangleF]::new($DrawLocation, $WordSizeTable[$Word])
+                        $WordRectangle = [RectangleF]::new([PointF]$DrawLocation, [SizeF]$WordSizeTable[$Word])
 
                         foreach ($Rectangle in $RectangleList) {
                             $IsColliding = (
@@ -402,7 +402,7 @@ function New-WordCloud {
             $WordCloudImage.Save($Path, $ExportFormat)
         }
         catch {
-            $PSCmdlet.ThrowTerminatingError($_)
+            throw $_
         }
         finally {
             $DrawingSurface.Dispose()
