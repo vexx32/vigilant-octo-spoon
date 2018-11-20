@@ -51,7 +51,7 @@ function Convert-ToRadians {
         $Degrees
     )
     process {
-        ([Math]::PI / 180) * $Degrees
+        ([Math]::PI / 180) * ($Degrees % 360)
     }
 }
 
@@ -271,12 +271,11 @@ function New-WordCloud {
         #[SizeF]$FocalWord = $WordSizeTable[$SortedWordList[0]]
         #$WordSizeTable[$SortedWordList[0]] = [SizeF]::new($FocalWord.Width, $FocalWord.Height * 0.6)
 
-        $ImageArea = [Size]::new([int]$ImageSize, [int]$ImageSize)
         $CentrePoint = [PointF]::new($ImageSize / 2, $ImageSize / 2)
         Write-Verbose "Final Image size will be $ImageSize with centrepoint $CentrePoint"
 
         try {
-            $WordCloudImage = [Bitmap]::new($ImageArea, $ImageArea)
+            $WordCloudImage = [Bitmap]::new($ImageSize, $ImageSize)
             $DrawingSurface = [Graphics]::FromImage($WordCloudImage)
 
             if ($BackgroundColor) {
