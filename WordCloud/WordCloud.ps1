@@ -251,8 +251,7 @@ function New-WordCloud {
                     [GraphicsUnit]::Pixel
                 )
 
-                $MeasuredSize = $Graphics.MeasureString($Word, $Font)
-                $WordSizeTable[$Word] = [SizeF]::new([float]$MeasuredSize.Width, [float]$MeasuredSize.Height)
+                $WordSizeTable[$Word] = $Graphics.MeasureString($Word, $Font)
             }
             $WordHeightTable | Out-String | Write-Verbose
         }
