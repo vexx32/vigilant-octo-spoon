@@ -227,22 +227,22 @@ function New-WordCloud {
         $SortedWordList = $WordHeightTable.GetEnumerator().Name |
             Sort-Object -Descending {
                 $WordHeightTable[$_]
-            } | Select-Object -First 50
+            } | Select-Object -First 100
 
-        $HighestWordCount, $AverageWordFrequency = $WordHeightTable.GetEnumerator() |
+        $HighestFrequency, $AverageFrequency = $WordHeightTable.GetEnumerator() |
             Measure-Object -Property Value -Average -Maximum |
             ForEach-Object {$_.Maximum, $_.Average}
 
-        $MaxFontSize = [Math]::Round($ImageSize / (8 * $AverageWordFrequency) )
+        $MaxFontSize = [Math]::Round($ImageSize / ($AverageFrequency * 2) )
         Write-Verbose "Unique Words Count: $($WordHeightTable.PSObject.BaseObject.Count)"
-        Write-Verbose "Highest Word Frequency: $HighestWordCount"
+        Write-Verbose "Highest Word Frequency: $HighestFrequency"
         Write-Verbose "Max Font Size: $MaxFontSize"
 
         try {
             $Graphics = [Graphics]::FromImage($DummyImage)
 
             foreach ($Word in $SortedWordList) {
-                $WordHeightTable[$Word] = [Math]::Round( ($WordHeightTable[$Word] / $HighestWordCount) * $MaxFontSize)
+                $WordHeightTable[$Word] = [Math]::Round( ($WordHeightTable[$Word] / $HighestFrequency) * $MaxFontSize)
                 if ($WordHeightTable[$Word] -lt 8) { continue }
 
                 $Font = [Font]::new(
