@@ -10,6 +10,39 @@ else {
     Add-Type -AssemblyName 'System.Drawing'
 }
 
+enum FileFormat {
+    Bmp  = 0x0
+    Emf  = 0x1
+    Exif = 0x2
+    Gif  = 0x3
+    Jpeg = 0x4
+    Png  = 0x5
+    Tiff = 0x6
+    Wmf  = 0x7
+}
+
+function ConvertTo-ImageFormat {
+    [CmdletBinding()]
+    [OutputType([Imaging.ImageFormat])]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline, Position = 0)]
+        [FileFormat]
+        $Format
+    )
+    process {
+        switch ($Format) {
+            ([FileFormat]::Bmp)  { [Imaging.ImageFormat]::Bmp  }
+            ([FileFormat]::Emf)  { [Imaging.ImageFormat]::Emf  }
+            ([FileFormat]::Exif) { [Imaging.ImageFormat]::Exif }
+            ([FileFormat]::Gif)  { [Imaging.ImageFormat]::Gif  }
+            ([FileFormat]::Jpeg) { [Imaging.ImageFormat]::Jpeg }
+            ([FileFormat]::Png)  { [Imaging.ImageFormat]::Png  }
+            ([FileFormat]::Tiff) { [Imaging.ImageFormat]::Tiff }
+            ([FileFormat]::Wmf)  { [Imaging.ImageFormat]::Wmf  }
+        }
+    }
+}
+
 function Convert-ToRadians {
     [CmdletBinding()]
     param(
@@ -62,15 +95,9 @@ function New-WordCloud {
 
         [Parameter()]
         [ValidateRange(512, 16384)]
-        [Alias('Width')]
+        [Alias('ImagePixelSize')]
         [int]
-        $ImageWidth = 2048,
-
-        [Parameter()]
-        [ValidateRange(512, 16384)]
-        [Alias('Height')]
-        [int]
-        $ImageHeight = 2048,
+        $ImageSize = 2048,
 
         [Parameter()]
         [ValidateRange(1, 20)]
@@ -89,7 +116,12 @@ function New-WordCloud {
         [Parameter()]
         [switch]
         [Alias('Greyscale', 'Grayscale')]
-        $Monochrome
+        $Monochrome,
+
+        [Parameter()]
+        [Alias('ImageFormat', 'Format')]
+        [FileFormat]
+        $OutputFormat = [FileFormat]::Png
     )
     begin {
         if (-not (Test-Path -Path $Path)) {
@@ -98,6 +130,9 @@ function New-WordCloud {
         else {
             $Path = (Get-Item -Path $Path).FullName
         }
+
+        $ExportFormat = $OutputFormat | ConvertTo-ImageFormat
+        Write-Verbose "Export Format: $ExportFormat"
 
         $ExcludedWords = @(
             'a', 'about', 'above', 'after', 'again', 'against', 'all', 'also', 'am', 'an', 'and', 'any', 'are', 'aren''t', 'as',
@@ -120,14 +155,11 @@ function New-WordCloud {
         $SplitChars = [char[]]" `n.,`"?!{}[]:'()`“`”"
         $WordList = [List[string]]::new()
 
-        $MaxFontSize = ($ImageWidth + $ImageHeight) / 12
-        $WordHeightTable = @{}
-        $WordSizeTable = @{}
-
         # Create a graphics object to measure the text's width and height.
         $DummyImage = [Bitmap]::new(1, 1)
 
-        $TotalSize = [SizeF]::Empty
+        $WordHeightTable = @{}
+        $WordSizeTable = @{}
 
         $MaxColors = if ($PSBoundParameters.ContainsKey('MaxColors')) { $MaxColors } else { [int]::MaxValue }
         $MinSaturation = if ($Monochrome) { 0 } else { 0.5 }
@@ -136,31 +168,31 @@ function New-WordCloud {
             Sort-Object {Get-Random} |
             Select-Object -First $MaxColors |
             ForEach-Object {
-            if (-not $Monochrome) {
-                [Color]::FromKnownColor($_)
+                if (-not $Monochrome) {
+                    [Color]::FromKnownColor($_)
+                }
+                else {
+                    [int]$Brightness = [Color]::FromKnownColor($_).GetBrightness() * 255
+                    [Color]::FromArgb($Brightness, $Brightness, $Brightness)
+                }
+            } | Where-Object {
+                if ($BackgroundColor) {
+                    $_.Name -notmatch $BackgroundColor -and
+                    $_.GetSaturation() -ge $MinSaturation
+                }
+                else {
+                    $_.GetSaturation() -ge $MinSaturation
+                }
+            } | Sort-Object -Descending {
+                $Value = $_.GetBrightness()
+                $Random = (-$Value..$Value | Get-Random) / (1 - $_.GetSaturation())
+                $Value + $Random
             }
-            else {
-                [int]$Brightness = [Color]::FromKnownColor($_).GetBrightness() * 255
-                [Color]::FromArgb($Brightness, $Brightness, $Brightness)
-            }
-        } | Where-Object {
-            if ($BackgroundColor) {
-                $_.Name -notmatch $BackgroundColor -and
-                $_.GetSaturation() -ge $MinSaturation
-            }
-            else {
-                $_.GetSaturation() -ge $MinSaturation
-            }
-        } | Sort-Object -Descending {
-            $Value = $_.GetBrightness()
-            $Random = (-$Value..$Value | Get-Random) / (1 - $_.GetSaturation())
-            $Value + $Random
-        }
 
         $RectangleList = [List[RectangleF]]::new()
 
-        $RadialDistance = 0
         $ColorIndex = 0
+        $RadialDistance = 0
     }
     process {
         $WordList.AddRange(
@@ -189,12 +221,17 @@ function New-WordCloud {
             }
         }
 
-        $HighestWordCount = $WordHeightTable.Values |
-            Measure-Object -Maximum |
+        $HighestWordCount = $WordHeightTable.GetEnumerator() |
+            Measure-Object -Property Value -Maximum |
             ForEach-Object -MemberName Maximum
 
+        $MaxFontSize = [Math]::Round($ImageSize / 8 )
+        Write-Verbose "Unique Words Count: $($WordHeightTable.Count)"
+        Write-Verbose "Highest Word Frequency: $HighestWordCount"
+        Write-Verbose "Max Font Size: $MaxFontSize"
+
         try {
-            foreach ($Word in $WordHeightTable.Keys.Clone()) {
+            foreach ($Word in $WordHeightTable.PSObject.BaseObject.Keys.Clone()) {
                 $WordHeightTable[$Word] = [Math]::Round( ($WordHeightTable[$Word] / $HighestWordCount) * $MaxFontSize)
 
                 $Font = [Font]::new(
@@ -205,9 +242,12 @@ function New-WordCloud {
                 )
 
                 $Graphics = [Graphics]::FromImage($DummyImage)
-                $WordSizeTable[$Word] = $Graphics.MeasureString($Word, $Font)
+                # $WordSizeTable[$Word] = $Graphics.MeasureString($Word, $Font)
+                $MeasuredSize = $Graphics.MeasureString($Word, $Font)
+                $WordSizeTable[$Word] = [SizeF]::new($MeasuredSize.Width * 0.95, $MeasuredSize.Height * 0.95)
                 # $TotalSize += $WordSizeTable[$Word]
             }
+            $WordHeightTable | Out-String | Write-Verbose
         }
         finally {
             $Graphics.Dispose()
@@ -221,104 +261,107 @@ function New-WordCloud {
         # $SideLength = ($TotalSize.Height + $TotalSize.Width) / 2
         # $TotalSize = [SizeF]::new($SideLength / 2, $SideLength / 2)
 
-        $ImageSize = [Size]::new($ImageWidth, $ImageHeight)
-        $CentrePoint = [PointF]::new($ImageSize.Height / 2, $ImageSize.Width / 2)
+        $ImageArea = [Size]::new($ImageSize, $ImageSize)
+        $CentrePoint = [PointF]::new($ImageSize / 2, $ImageSize / 2)
         Write-Verbose "Final Image size will be $ImageSize with centrepoint $CentrePoint"
 
         try {
-            $WordCloudImage = [Bitmap]::new($DummyImage, $ImageSize)
+            $WordCloudImage = [Bitmap]::new($DummyImage, $ImageArea)
             $DrawingSurface = [Graphics]::FromImage($WordCloudImage)
-        }
-        catch {
 
-        }
+            if ($BackgroundColor) {
+                $DrawingSurface.Clear([Color]::FromKnownColor($BackgroundColor))
+            }
+            $DrawingSurface.SmoothingMode = [Drawing2D.SmoothingMode]::AntiAlias
+            $DrawingSurface.TextRenderingHint = [Text.TextRenderingHint]::AntiAlias
 
-        if ($BackgroundColor) {
-            $DrawingSurface.Clear([Color]::FromKnownColor($BackgroundColor))
-        }
-        $DrawingSurface.SmoothingMode = [Drawing2D.SmoothingMode]::AntiAlias
-        $DrawingSurface.TextRenderingHint = [Text.TextRenderingHint]::AntiAlias
+            [SizeF]$BiggestWord = $WordSizeTable[$SortedWordList[0]]
+            [SizeF]$SecondBiggest = $WordSizeTable[$SortedWordList[1]]
+            if ( ($BiggestWord.Height * $BiggestWord.Width) / ($SecondBiggest.Height * $SecondBiggest.Width) -gt 0.5 ) {
+                $CentreOffset = 0.5
+            }
+            else {
+                $CentreOffset = 0.8
+            }
 
-        :words foreach ($Word in $SortedWordList) {
-            $Font = [Font]::new(
-                $FontFamily,
-                $WordHeightTable[$Word],
-                $FontStyle,
-                [GraphicsUnit]::Pixel
-            )
+            :words foreach ($Word in $SortedWordList) {
+                $Font = [Font]::new(
+                    $FontFamily,
+                    $WordHeightTable[$Word],
+                    $FontStyle,
+                    [GraphicsUnit]::Pixel
+                )
 
-            $WordRectangle = $null
-            do {
-                if ($RadialDistance -gt $ImageSize.Height) {
-                    continue words
-                }
-                $IsColliding = $false
-                $AngleIncrement = 360 / ( ($RadialDistance + 1) * $RadialGranularity / 10 )
-
-                for ($Angle = 0; $Angle -le 360; $Angle += $AngleIncrement) {
-                    $Radians = Convert-ToRadians -Degrees $Angle
-                    $Complex = [Complex]::FromPolarCoordinates($RadialDistance, $Radians)
-
-                    if ($Complex -eq 0) {
-                        # Offset slighty from center
-                        $OffsetX = $WordSizeTable[$Word].Width / 1.5
-                        $OffsetY = $WordSizeTable[$Word].Height / 1.5
-                        $DrawLocation = [PointF]::new($CentrePoint.X - $OffsetX, $CentrePoint.Y - $OffsetY)
+                $WordRectangle = $null
+                do {
+                    if ( $RadialDistance -gt ($ImageSize / 2) ) {
+                        continue words
                     }
-                    else {
-                        $DrawLocation = [PointF]::new($CentrePoint.X + $Complex.Real, $CentrePoint.Y + $Complex.Imaginary)
-                    }
+                    $IsColliding = $false
+                    $AngleIncrement = 360 / ( ($RadialDistance + 1) * $RadialGranularity / 10 )
 
-                    $WordRectangle = [RectangleF]::new($DrawLocation, $WordSizeTable[$Word])
+                    for ($Angle = 0; $Angle -le 360; $Angle += $AngleIncrement) {
+                        $Radians = Convert-ToRadians -Degrees $Angle
+                        $Complex = [Complex]::FromPolarCoordinates($RadialDistance, $Radians)
 
-                    foreach ($Rectangle in $RectangleList) {
-                        $IsColliding = (
-                            $WordRectangle.IntersectsWith($Rectangle) -or
-                            $WordRectangle.Top -lt 0 -or
-                            $WordRectangle.Bottom -gt $ImageSize.Height -or
-                            $WordRectangle.Left -lt 0 -or
-                            $WordRectangle.Right -gt $ImageSize.Width
-                        )
+                        if ($Complex -eq 0) {
+                            # Offset slighty from center
+                            $OffsetX = $WordSizeTable[$Word].Width * $CentreOffset
+                            $OffsetY = $WordSizeTable[$Word].Height * $CentreOffset
+                            $DrawLocation = [PointF]::new($CentrePoint.X - $OffsetX, $CentrePoint.Y - $OffsetY)
+                        }
+                        else {
+                            $DrawLocation = [PointF]::new($CentrePoint.X + $Complex.Real, $CentrePoint.Y + $Complex.Imaginary)
+                        }
 
-                        if ($IsColliding) {
+                        $WordRectangle = [RectangleF]::new($DrawLocation, $WordSizeTable[$Word])
+
+                        foreach ($Rectangle in $RectangleList) {
+                            $IsColliding = (
+                                $WordRectangle.IntersectsWith($Rectangle) -or
+                                $WordRectangle.Top -lt 0 -or
+                                $WordRectangle.Bottom -gt $ImageSize -or
+                                $WordRectangle.Left -lt 0 -or
+                                $WordRectangle.Right -gt $ImageSize
+                            )
+
+                            if ($IsColliding) {
+                                break
+                            }
+                        }
+
+                        if (!$IsColliding) {
                             break
                         }
                     }
 
-                    if (!$IsColliding) {
-                        break
+                    if ($IsColliding) {
+                        $RadialDistance += $DistanceStep
                     }
+                } while ($IsColliding)
+
+                $RectangleList.Add($WordRectangle)
+                $Color = $ColorList[$ColorIndex]
+
+                $ColorIndex++
+                if ($ColorIndex -ge $ColorList.Count) {
+                    $ColorIndex = 0
                 }
 
-                if ($IsColliding) {
-                    $RadialDistance += $DistanceStep
-                }
-            } while ($IsColliding)
+                $DrawingSurface.DrawString($Word, $Font, [SolidBrush]::new($Color), $DrawLocation)
 
-            $RectangleList.Add($WordRectangle)
-
-            $Color = $ColorList[$ColorIndex]
-
-            $ColorIndex++
-            if ($ColorIndex -ge $ColorList.Count) {
-                $ColorIndex = 0
+                # $RadialDistance *= 0.75
             }
 
-            $DrawingSurface.DrawString($Word, $Font, [SolidBrush]::new($Color), $DrawLocation)
+            $DrawingSurface.Flush()
+            $WordCloudImage.Save($Path, $ExportFormat)
         }
-
-        $DrawingSurface.Flush()
-        $WordCloudImage.Save($Path, [Imaging.ImageFormat]::Png)
-
-        $DrawingSurface.Dispose()
-        $WordCloudImage.Dispose()
+        catch {
+            $PSCmdlet.ThrowTerminatingError($_)
+        }
+        finally {
+            $DrawingSurface.Dispose()
+            $WordCloudImage.Dispose()
+        }
     }
 }
-
-
-
-
-
-
-# Link to Python word cloud position figuring code:
-# https://github.com/amueller/word_cloud/blob/b79b3d69a65643dbd421a027e66760a4398e91b3/wordcloud/wordcloud.py#L471
