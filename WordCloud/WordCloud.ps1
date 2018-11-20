@@ -1,4 +1,4 @@
-using namespace System.Drawing
+﻿using namespace System.Drawing
 using namespace System.Collections.Generic
 using namespace System.Numerics
 
@@ -153,7 +153,7 @@ function New-WordCloud {
             'wouldn''t', 'www', 'you', 'you''d', 'you''ll', 'you''re', 'you''ve', 'your', 'yours', 'yourself', 'yourselves'
         ) -join '|'
 
-        $SplitChars = [char[]]" `n.,`"?!{}[]:'()`“`”"
+        $SplitChars = [char[]]" `n.,`"?!{}[]:()`“`”™"
         $WordList = [List[string]]::new()
 
         # Create a graphics object to measure the text's width and height.
@@ -198,8 +198,8 @@ function New-WordCloud {
     process {
         $WordList.AddRange(
             $InputString.Split($SplitChars, [StringSplitOptions]::RemoveEmptyEntries).Where{
-                $_ -notmatch "^($ExcludedWords)s?$|^[^a-z]+$" -and $_.Length -gt 1
-            } -as [string[]]
+                $_ -notmatch "^($ExcludedWords)s?$|^[^a-z]+$|[^a-z0-9'_-]" -and $_.Length -gt 1
+            } -replace "^'|'$" -as [string[]]
         )
     }
     end {
@@ -229,7 +229,7 @@ function New-WordCloud {
             ForEach-Object {$_.Maximum, $_.Average}
 
 
-        $MaxFontSize = [Math]::Round($ImageSize / (8 * ($AverageWordFrequency / $WordHeightTable.PSObject.BaseObject.Count)) )
+        $MaxFontSize = [Math]::Round($ImageSize / (6 * ($AverageWordFrequency / $WordHeightTable.PSObject.BaseObject.Count)) )
         Write-Verbose "Unique Words Count: $($WordHeightTable.PSObject.BaseObject.Count)"
         Write-Verbose "Highest Word Frequency: $HighestWordCount"
         Write-Verbose "Max Font Size: $MaxFontSize"
