@@ -242,10 +242,9 @@ function New-WordCloud {
                 )
 
                 $Graphics = [Graphics]::FromImage($DummyImage)
-                # $WordSizeTable[$Word] = $Graphics.MeasureString($Word, $Font)
                 $MeasuredSize = $Graphics.MeasureString($Word, $Font)
+
                 $WordSizeTable[$Word] = [SizeF]::new($MeasuredSize.Width * 0.95, $MeasuredSize.Height * 0.95)
-                # $TotalSize += $WordSizeTable[$Word]
             }
             $WordHeightTable | Out-String | Write-Verbose
         }
@@ -257,9 +256,8 @@ function New-WordCloud {
             Sort-Object -Descending { $WordSizeTable[$_].Width * $WordSizeTable[$_].Height } |
             Select-Object -First 100
 
-        # Keep image square
-        # $SideLength = ($TotalSize.Height + $TotalSize.Width) / 2
-        # $TotalSize = [SizeF]::new($SideLength / 2, $SideLength / 2)
+        [SizeF]$FocalWord = $WordSizeTable[$SortedWordList[0]]
+        $WordSizeTable[$SortedWordList[0]] = [SizeF]::new($FocalWord.Width, $FocalWord.Height * 0.6)
 
         $ImageArea = [Size]::new($ImageSize, $ImageSize)
         $CentrePoint = [PointF]::new($ImageSize / 2, $ImageSize / 2)
