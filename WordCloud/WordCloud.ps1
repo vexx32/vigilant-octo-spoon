@@ -256,8 +256,8 @@ function New-WordCloud {
             Sort-Object -Descending { $WordSizeTable[$_].Width * $WordSizeTable[$_].Height } |
             Select-Object -First 100
 
-        [SizeF]$FocalWord = $WordSizeTable[$SortedWordList[0]]
-        $WordSizeTable[$SortedWordList[0]] = [SizeF]::new($FocalWord.Width, $FocalWord.Height * 0.6)
+        #[SizeF]$FocalWord = $WordSizeTable[$SortedWordList[0]]
+        #$WordSizeTable[$SortedWordList[0]] = [SizeF]::new($FocalWord.Width, $FocalWord.Height * 0.6)
 
         $ImageArea = [Size]::new($ImageSize, $ImageSize)
         $CentrePoint = [PointF]::new($ImageSize / 2, $ImageSize / 2)
