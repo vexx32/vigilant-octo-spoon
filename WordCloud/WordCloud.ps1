@@ -230,7 +230,7 @@ function New-WordCloud {
             Measure-Object -Average -Maximum |
             ForEach-Object {$_.Maximum, $_.Average}
 
-        $MaxFontSize = [Math]::Round($ImageSize / ($HighestFrequency / $AverageFrequency) )
+        $MaxFontSize = [Math]::Round($ImageSize / ($HighestFrequency / $AverageFrequency / 10) )
         Write-Verbose "Unique Words Count: $($WordHeightTable.PSObject.BaseObject.Count)"
         Write-Verbose "Highest Word Frequency: $HighestFrequency; Average: $AverageFrequency"
         Write-Verbose "Max Font Size: $MaxFontSize"
@@ -284,7 +284,9 @@ function New-WordCloud {
             $DrawingSurface.TextRenderingHint = [Text.TextRenderingHint]::AntiAlias
 
             $RadialScanCount = 0
-            :words foreach ($Word in $WordSizeTable.GetEnumerator().Name) {
+            :words foreach ($Word in $SortedWordList) {
+                if (-not $WordSizeTable[$Word]) { continue }
+
                 $Font = [Font]::new(
                     $FontFamily,
                     $WordHeightTable[$Word],
