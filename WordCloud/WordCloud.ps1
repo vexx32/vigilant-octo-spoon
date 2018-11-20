@@ -47,7 +47,6 @@ function Convert-ToRadians {
     [CmdletBinding()]
     param(
         [Parameter(Position = 0, ValueFromPipeline)]
-        [ValidateRange(0, 360)]
         [double]
         $Degrees
     )
@@ -131,6 +130,8 @@ function New-WordCloud {
             $Path = (Get-Item -Path $Path).FullName
         }
 
+        $Noise = [Random]::new()
+
         $ExportFormat = $OutputFormat | ConvertTo-ImageFormat
         Write-Verbose "Export Format: $ExportFormat"
 
@@ -203,22 +204,24 @@ function New-WordCloud {
     }
     end {
         # Count occurrence of each word
+        $RemoveList = [List[string]]::new()
         switch ($WordList) {
-            { $WordHeightTable[$_ -replace 's$'] }
-            {
-                $WordHeightTable[$_ -replace 's$'] ++
+            { $WordHeightTable[($_ -replace 's$')] } {
+                $WordHeightTable[($_ -replace 's$')] += 1
                 continue
             }
-            { $WordHeightTable["${_}s"] }
-            {
-                $WordHeightTable[$_] = $WordHeightTable["${_}s"] + 1
-                $WordHeightTable.Remove("${_}s")
+            { $WordHeightTable[("${_}s")] } {
+                $WordHeightTable[($_)] = $WordHeightTable[("${_}s")] + 1
+                $RemoveList.Add("${_}s")
                 continue
             }
             default {
-                $WordHeightTable[$_] ++
+                $WordHeightTable[($_)] += 1
                 continue
             }
+        }
+        foreach ($Word in $RemoveList) {
+            $WordHeightTable.Remove($Word)
         }
 
         $HighestWordCount, $AverageWordFrequency = $WordHeightTable.GetEnumerator() |
@@ -226,15 +229,19 @@ function New-WordCloud {
             ForEach-Object {$_.Maximum, $_.Average}
 
 
-        $MaxFontSize = [Math]::Round($ImageSize / (8 * $AverageWordFrequency) )
-        Write-Verbose "Unique Words Count: $($WordHeightTable.Count)"
+        $MaxFontSize = [Math]::Round($ImageSize / (8 * ($AverageWordFrequency / $WordHeightTable.PSObject.BaseObject.Count)) )
+        Write-Verbose "Unique Words Count: $($WordHeightTable.PSObject.BaseObject.Count)"
         Write-Verbose "Highest Word Frequency: $HighestWordCount"
         Write-Verbose "Max Font Size: $MaxFontSize"
 
         try {
-            foreach ($Word in $WordHeightTable.PSObject.BaseObject.Keys.Clone()) {
-                $WordHeightTable[$Word] = [Math]::Round( ($WordHeightTable[$Word] / $HighestWordCount) * $MaxFontSize)
+            $Graphics = [Graphics]::FromImage($DummyImage)
 
+            foreach ($Word in $WordHeightTable.Clone().GetEnumerator().Name) {
+                $WordHeightTable[$Word] = [Math]::Round( ($WordHeightTable[$Word] / $HighestWordCount) * $MaxFontSize)
+                if ($WordHeightTable[$Word] -lt 8) {
+                    continue
+                }
                 $Font = [Font]::new(
                     $FontFamily,
                     $WordHeightTable[$Word],
@@ -242,20 +249,23 @@ function New-WordCloud {
                     [GraphicsUnit]::Pixel
                 )
 
-                $Graphics = [Graphics]::FromImage($DummyImage)
                 $MeasuredSize = $Graphics.MeasureString($Word, $Font)
-
                 $WordSizeTable[$Word] = [SizeF]::new($MeasuredSize.Width, $MeasuredSize.Height)
             }
             $WordHeightTable | Out-String | Write-Verbose
         }
         finally {
-            $Graphics.Dispose()
+            if ($Graphics) {
+                $Graphics.Dispose()
+            }
         }
 
-        $SortedWordList = $WordHeightTable.Keys |
-            Sort-Object -Descending { $WordSizeTable[$_].Width * $WordSizeTable[$_].Height } |
-            Select-Object -First 100
+        $SortedWordList = $WordHeightTable.GetEnumerator().Name |
+            Where-Object {$WordHeightTable[$_] -ge 8}
+            Sort-Object -Descending {
+                ($WordSizeTable[$_].Width * $WordSizeTable[$_].Height) +
+                    (Get-Random -Minimum ($MaxFontSize / 3) -Maximum ($MaxFontSize / 1.5) )
+            } | Select-Object -First 100
 
         #[SizeF]$FocalWord = $WordSizeTable[$SortedWordList[0]]
         #$WordSizeTable[$SortedWordList[0]] = [SizeF]::new($FocalWord.Width, $FocalWord.Height * 0.6)
@@ -274,15 +284,6 @@ function New-WordCloud {
             $DrawingSurface.SmoothingMode = [Drawing2D.SmoothingMode]::AntiAlias
             $DrawingSurface.TextRenderingHint = [Text.TextRenderingHint]::AntiAlias
 
-            [SizeF]$BiggestWord = $WordSizeTable[$SortedWordList[0]]
-            [SizeF]$SecondBiggest = $WordSizeTable[$SortedWordList[1]]
-            if ( ($BiggestWord.Height * $BiggestWord.Width) / ($SecondBiggest.Height * $SecondBiggest.Width) -gt 0.5 ) {
-                $CentreOffset = 0.5
-            }
-            else {
-                $CentreOffset = 0.8
-            }
-
             $RadialScanCount = 0
             :words foreach ($Word in $SortedWordList) {
                 $Font = [Font]::new(
@@ -292,28 +293,70 @@ function New-WordCloud {
                     [GraphicsUnit]::Pixel
                 )
 
-                $RadialScanCount /= 4
+                $RadialScanCount /= 3
                 $WordRectangle = $null
                 do {
                     if ( $RadialDistance -gt ($ImageSize / 2) ) {
                         continue words
                     }
                     $IsColliding = $false
-                    $AngleIncrement = 360 / ( ($RadialDistance + 1) * $RadialGranularity / 10 )
 
-                    for ($Angle = 0; $Angle -le 360; $Angle += $AngleIncrement) {
+                    $AngleIncrement = 360 / ( ($RadialDistance + 1) * $RadialGranularity / 10 )
+                    switch ([int]$RadialScanCount -band 7) {
+                        0 {
+                            $Start = 0
+                            $End = 360
+                        }
+                        1 {
+                            $Start = -90
+                            $End = 270
+                        }
+                        2 {
+                            $Start = -180
+                            $End = 180
+                        }
+                        3 {
+                            $Start = -270
+                            $End = 90
+                        }
+                        4 {
+                            $AngleIncrement = - $AngleIncrement
+                            $Start = 360
+                            $End = 0
+                        }
+                        5 {
+                            $AngleIncrement = - $AngleIncrement
+                            $Start = 270
+                            $End = -90
+                        }
+                        6 {
+                            $AngleIncrement = - $AngleIncrement
+                            $Start = 180
+                            $End = -180
+                        }
+                        7 {
+                            $AngleIncrement = - $AngleIncrement
+                            $Start = 90
+                            $End = -270
+                        }
+                    }
+
+                    for (
+                        $Angle = $Start;
+                        $( if ($Start -lt $End) {$Angle -le $End} else {$End -le $Angle} );
+                        $Angle += $AngleIncrement
+                    ) {
                         $Radians = Convert-ToRadians -Degrees $Angle
                         $Complex = [Complex]::FromPolarCoordinates($RadialDistance, $Radians)
 
-                        if ($Complex -eq 0) {
-                            # Offset slighty from center
-                            $OffsetX = $WordSizeTable[$Word].Width * $CentreOffset
-                            $OffsetY = $WordSizeTable[$Word].Height * $CentreOffset
-                            $DrawLocation = [PointF]::new($CentrePoint.X - $OffsetX, $CentrePoint.Y - $OffsetY)
-                        }
-                        else {
-                            $DrawLocation = [PointF]::new($CentrePoint.X + $Complex.Real, $CentrePoint.Y + $Complex.Imaginary)
-                        }
+                        # Target center of text on target point
+                        #$CentreOffset = Get-Random -Minimum 0.0 -Maximum 1.0
+                        $OffsetX = $WordSizeTable[$Word].Width * $Noise.NextDouble()
+                        $OffsetY = $WordSizeTable[$Word].Height * $Noise.NextDouble()
+                        $DrawLocation = [PointF]::new(
+                            $Complex.Real + $CentrePoint.X - $OffsetX,
+                            $Complex.Imaginary + $CentrePoint.Y - $OffsetY
+                        )
 
                         $WordRectangle = [RectangleF]::new($DrawLocation, $WordSizeTable[$Word])
 
@@ -354,7 +397,6 @@ function New-WordCloud {
 
 
                 $RadialDistance -= $DistanceStep * ($RadialScanCount / 2)
-
             }
 
             $DrawingSurface.Flush()
