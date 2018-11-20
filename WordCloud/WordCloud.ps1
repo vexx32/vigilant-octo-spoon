@@ -61,14 +61,16 @@ function New-WordCloud {
         $FontStyle = [FontStyle]::Regular,
 
         [Parameter()]
-        [Alias('MaxWordSize')]
-        [double]
-        $MaxFontSize = 200,
+        [ValidateRange(512, 16384)]
+        [Alias('Width')]
+        [int]
+        $ImageWidth = 2048,
 
         [Parameter()]
-        [Alias('GraphicsUnit', 'Unit')]
-        [GraphicsUnit]
-        $SizeUnit = [GraphicsUnit]::Point,
+        [ValidateRange(512, 16384)]
+        [Alias('Height')]
+        [int]
+        $ImageHeight = 2048,
 
         [Parameter()]
         [ValidateRange(1, 20)]
@@ -118,6 +120,7 @@ function New-WordCloud {
         $SplitChars = [char[]]" `n.,`"?!{}[]:'()`“`”"
         $WordList = [List[string]]::new()
 
+        $MaxFontSize = ($ImageWidth + $ImageHeight) / 12
         $WordHeightTable = @{}
         $WordSizeTable = @{}
 
@@ -133,26 +136,26 @@ function New-WordCloud {
             Sort-Object {Get-Random} |
             Select-Object -First $MaxColors |
             ForEach-Object {
-                if (-not $Monochrome) {
-                    [Color]::FromKnownColor($_)
-                }
-                else {
-                    [int]$Brightness = [Color]::FromKnownColor($_).GetBrightness() * 255
-                    [Color]::FromArgb($Brightness, $Brightness, $Brightness)
-                }
-            } | Where-Object {
-                if ($BackgroundColor) {
-                    $_.Name -notmatch $BackgroundColor -and
-                    $_.GetSaturation() -ge $MinSaturation
-                }
-                else {
-                    $_.GetSaturation() -ge $MinSaturation
-                }
-            } | Sort-Object -Descending {
-                $Value = $_.GetBrightness()
-                $Random = (-$Value..$Value | Get-Random) / (1 - $_.GetSaturation())
-                $Value + $Random
+            if (-not $Monochrome) {
+                [Color]::FromKnownColor($_)
             }
+            else {
+                [int]$Brightness = [Color]::FromKnownColor($_).GetBrightness() * 255
+                [Color]::FromArgb($Brightness, $Brightness, $Brightness)
+            }
+        } | Where-Object {
+            if ($BackgroundColor) {
+                $_.Name -notmatch $BackgroundColor -and
+                $_.GetSaturation() -ge $MinSaturation
+            }
+            else {
+                $_.GetSaturation() -ge $MinSaturation
+            }
+        } | Sort-Object -Descending {
+            $Value = $_.GetBrightness()
+            $Random = (-$Value..$Value | Get-Random) / (1 - $_.GetSaturation())
+            $Value + $Random
+        }
 
         $RectangleList = [List[RectangleF]]::new()
 
@@ -162,34 +165,48 @@ function New-WordCloud {
     process {
         $WordList.AddRange(
             $InputString.Split($SplitChars, [StringSplitOptions]::RemoveEmptyEntries).Where{
-                $_ -notmatch "^$ExcludedWords$|^[^a-z]+$"
+                $_ -notmatch "^$ExcludedWords$|^[^a-z]+$" -and $_.Length -gt 1
             } -as [string[]]
         )
     }
     end {
-        foreach ($Word in $WordList) {
-            # Count occurrence of each word
-            $WordHeightTable[$Word] ++
+        # Count occurrence of each word
+        switch ($WordList) {
+            { $WordHeightTable[$_ -replace 's$'] }
+            {
+                $WordHeightTable[$_ -replace 's$'] ++
+                continue
+            }
+            { $WordHeightTable["${_}s"] }
+            {
+                $WordHeightTable[$_] = $WordHeightTable["${_}s"] + 1
+                $WordHeightTable.Remove("${_}s")
+                continue
+            }
+            default {
+                $WordHeightTable[$_] ++
+                continue
+            }
         }
 
-        $HighestWordCountt = $WordHeightTable.Values |
+        $HighestWordCount = $WordHeightTable.Values |
             Measure-Object -Maximum |
             ForEach-Object -MemberName Maximum
 
         try {
             foreach ($Word in $WordHeightTable.Keys.Clone()) {
-                $WordHeightTable[$Word] = [Math]::Round( ($WordHeightTable[$Word] / $HighestWordCountt) * $MaxFontSize)
+                $WordHeightTable[$Word] = [Math]::Round( ($WordHeightTable[$Word] / $HighestWordCount) * $MaxFontSize)
 
                 $Font = [Font]::new(
                     $FontFamily,
                     $WordHeightTable[$Word],
                     $FontStyle,
-                    $SizeUnit
+                    [GraphicsUnit]::Pixel
                 )
 
                 $Graphics = [Graphics]::FromImage($DummyImage)
                 $WordSizeTable[$Word] = $Graphics.MeasureString($Word, $Font)
-                $TotalSize += $WordSizeTable[$Word]
+                # $TotalSize += $WordSizeTable[$Word]
             }
         }
         finally {
@@ -201,15 +218,20 @@ function New-WordCloud {
             Select-Object -First 100
 
         # Keep image square
-        $SideLength = ($TotalSize.Height + $TotalSize.Width) / 2
-        $TotalSize = [SizeF]::new($SideLength / 2, $SideLength / 2)
+        # $SideLength = ($TotalSize.Height + $TotalSize.Width) / 2
+        # $TotalSize = [SizeF]::new($SideLength / 2, $SideLength / 2)
 
-        $FinalImageSize = $TotalSize.ToSize()
-        $CentrePoint = [PointF]::new($FinalImageSize.Height / 2, $FinalImageSize.Width / 2)
-        Write-Verbose "Final Image size will be $FinalImageSize with centrepoint $CentrePoint"
+        $ImageSize = [Size]::new($ImageWidth, $ImageHeight)
+        $CentrePoint = [PointF]::new($ImageSize.Height / 2, $ImageSize.Width / 2)
+        Write-Verbose "Final Image size will be $ImageSize with centrepoint $CentrePoint"
 
-        $WordCloudImage = [Bitmap]::new($DummyImage, $FinalImageSize)
-        $DrawingSurface = [Graphics]::FromImage($WordCloudImage)
+        try {
+            $WordCloudImage = [Bitmap]::new($DummyImage, $ImageSize)
+            $DrawingSurface = [Graphics]::FromImage($WordCloudImage)
+        }
+        catch {
+
+        }
 
         if ($BackgroundColor) {
             $DrawingSurface.Clear([Color]::FromKnownColor($BackgroundColor))
@@ -222,12 +244,12 @@ function New-WordCloud {
                 $FontFamily,
                 $WordHeightTable[$Word],
                 $FontStyle,
-                $SizeUnit
+                [GraphicsUnit]::Pixel
             )
 
             $WordRectangle = $null
             do {
-                if ($RadialDistance -gt $FinalImageSize.Height) {
+                if ($RadialDistance -gt $ImageSize.Height) {
                     continue words
                 }
                 $IsColliding = $false
@@ -253,9 +275,9 @@ function New-WordCloud {
                         $IsColliding = (
                             $WordRectangle.IntersectsWith($Rectangle) -or
                             $WordRectangle.Top -lt 0 -or
-                            $WordRectangle.Bottom -gt $FinalImageSize.Height -or
+                            $WordRectangle.Bottom -gt $ImageSize.Height -or
                             $WordRectangle.Left -lt 0 -or
-                            $WordRectangle.Right -gt $FinalImageSize.Width
+                            $WordRectangle.Right -gt $ImageSize.Width
                         )
 
                         if ($IsColliding) {
@@ -287,6 +309,9 @@ function New-WordCloud {
 
         $DrawingSurface.Flush()
         $WordCloudImage.Save($Path, [Imaging.ImageFormat]::Png)
+
+        $DrawingSurface.Dispose()
+        $WordCloudImage.Dispose()
     }
 }
 
