@@ -221,11 +221,12 @@ function New-WordCloud {
             }
         }
 
-        $HighestWordCount = $WordHeightTable.GetEnumerator() |
-            Measure-Object -Property Value -Maximum |
-            ForEach-Object -MemberName Maximum
+        $HighestWordCount, $AverageWordFrequency = $WordHeightTable.GetEnumerator() |
+            Measure-Object -Property Value -Average -Maximum |
+            ForEach-Object {$_.Maximum, $_.Average}
 
-        $MaxFontSize = [Math]::Round($ImageSize / 8 )
+
+        $MaxFontSize = [Math]::Round($ImageSize / (8 * $AverageWordFrequency) )
         Write-Verbose "Unique Words Count: $($WordHeightTable.Count)"
         Write-Verbose "Highest Word Frequency: $HighestWordCount"
         Write-Verbose "Max Font Size: $MaxFontSize"
@@ -244,7 +245,7 @@ function New-WordCloud {
                 $Graphics = [Graphics]::FromImage($DummyImage)
                 $MeasuredSize = $Graphics.MeasureString($Word, $Font)
 
-                $WordSizeTable[$Word] = [SizeF]::new($MeasuredSize.Width * 0.95, $MeasuredSize.Height * 0.95)
+                $WordSizeTable[$Word] = [SizeF]::new($MeasuredSize.Width, $MeasuredSize.Height)
             }
             $WordHeightTable | Out-String | Write-Verbose
         }
@@ -282,6 +283,7 @@ function New-WordCloud {
                 $CentreOffset = 0.8
             }
 
+            $RadialScanCount = 0
             :words foreach ($Word in $SortedWordList) {
                 $Font = [Font]::new(
                     $FontFamily,
@@ -290,6 +292,7 @@ function New-WordCloud {
                     [GraphicsUnit]::Pixel
                 )
 
+                $RadialScanCount /= 4
                 $WordRectangle = $null
                 do {
                     if ( $RadialDistance -gt ($ImageSize / 2) ) {
@@ -335,6 +338,7 @@ function New-WordCloud {
 
                     if ($IsColliding) {
                         $RadialDistance += $DistanceStep
+                        $RadialScanCount++
                     }
                 } while ($IsColliding)
 
@@ -348,7 +352,9 @@ function New-WordCloud {
 
                 $DrawingSurface.DrawString($Word, $Font, [SolidBrush]::new($Color), $DrawLocation)
 
-                # $RadialDistance *= 0.75
+
+                $RadialDistance -= $DistanceStep * ($RadialScanCount / 2)
+
             }
 
             $DrawingSurface.Flush()
