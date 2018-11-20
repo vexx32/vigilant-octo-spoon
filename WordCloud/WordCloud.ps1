@@ -156,9 +156,6 @@ function New-WordCloud {
         $SplitChars = [char[]]" `n.,`"?!{}[]:()`“`”™"
         $WordList = [List[string]]::new()
 
-        # Create a graphics object to measure the text's width and height.
-        $DummyImage = [Bitmap]::new(1, 1)
-
         $WordHeightTable = @{}
         $WordSizeTable = @{}
 
@@ -229,16 +226,18 @@ function New-WordCloud {
                 $WordHeightTable[$_]
             } | Select-Object -First 100
 
-        $HighestFrequency, $AverageFrequency = $WordHeightTable.GetEnumerator() |
-            Measure-Object -Property Value -Average -Maximum |
+        $HighestFrequency, $AverageFrequency = $WordHeightTable.PSObject.BaseObject.Values |
+            Measure-Object -Average -Maximum |
             ForEach-Object {$_.Maximum, $_.Average}
 
-        $MaxFontSize = [Math]::Round($ImageSize / ($AverageFrequency * 2) )
+        $MaxFontSize = [Math]::Round($ImageSize / ($HighestFrequency / $AverageFrequency) )
         Write-Verbose "Unique Words Count: $($WordHeightTable.PSObject.BaseObject.Count)"
-        Write-Verbose "Highest Word Frequency: $HighestFrequency"
+        Write-Verbose "Highest Word Frequency: $HighestFrequency; Average: $AverageFrequency"
         Write-Verbose "Max Font Size: $MaxFontSize"
 
         try {
+            # Create a graphics object to measure the text's width and height.
+            $DummyImage = [Bitmap]::new(1, 1)
             $Graphics = [Graphics]::FromImage($DummyImage)
 
             foreach ($Word in $SortedWordList) {
@@ -253,25 +252,31 @@ function New-WordCloud {
                 )
 
                 $MeasuredSize = $Graphics.MeasureString($Word, $Font)
-                $WordSizeTable[$Word] = [SizeF]::new($MeasuredSize.Width, $MeasuredSize.Height)
+                $WordSizeTable[$Word] = [SizeF]::new([float]$MeasuredSize.Width, [float]$MeasuredSize.Height)
             }
             $WordHeightTable | Out-String | Write-Verbose
+        }
+        catch {
+            $PSCmdlet.ThrowTerminatingError($_)
         }
         finally {
             if ($Graphics) {
                 $Graphics.Dispose()
+            }
+            if ($DummyImage) {
+                $DummyImage.Dispose()
             }
         }
 
         #[SizeF]$FocalWord = $WordSizeTable[$SortedWordList[0]]
         #$WordSizeTable[$SortedWordList[0]] = [SizeF]::new($FocalWord.Width, $FocalWord.Height * 0.6)
 
-        $ImageArea = [Size]::new($ImageSize, $ImageSize)
+        $ImageArea = [Size]::new([int]$ImageSize, [int]$ImageSize)
         $CentrePoint = [PointF]::new($ImageSize / 2, $ImageSize / 2)
         Write-Verbose "Final Image size will be $ImageSize with centrepoint $CentrePoint"
 
         try {
-            $WordCloudImage = [Bitmap]::new($DummyImage, $ImageArea)
+            $WordCloudImage = [Bitmap]::new($ImageArea, $ImageArea)
             $DrawingSurface = [Graphics]::FromImage($WordCloudImage)
 
             if ($BackgroundColor) {
