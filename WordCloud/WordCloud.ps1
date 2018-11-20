@@ -197,7 +197,7 @@ function New-WordCloud {
     process {
         $WordList.AddRange(
             $InputString.Split($SplitChars, [StringSplitOptions]::RemoveEmptyEntries).Where{
-                $_ -notmatch "^$ExcludedWords$|^[^a-z]+$" -and $_.Length -gt 1
+                $_ -notmatch "^($ExcludedWords)s?$|^[^a-z]+$" -and $_.Length -gt 1
             } -as [string[]]
         )
     }
