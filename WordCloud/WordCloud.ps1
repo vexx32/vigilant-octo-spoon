@@ -226,14 +226,15 @@ function New-WordCloud {
                 $WordHeightTable[$_]
             } | Select-Object -First 100
 
-        $HighestFrequency, $AverageFrequency = $WordHeightTable.PSObject.BaseObject.Values |
+        $HighestFrequency, $AverageFrequency = $SortedWordList |
+            ForEach-Object { $WordHeightTable[$_] } |
             Measure-Object -Average -Maximum |
             ForEach-Object {$_.Maximum, $_.Average}
 
-        $MaxFontSize = [Math]::Round($ImageSize / ($HighestFrequency / $AverageFrequency / 10) )
+        $FontScale = $ImageSize * 2 / ($AverageFrequency * $SortedWordList.Count)
         Write-Verbose "Unique Words Count: $($WordHeightTable.PSObject.BaseObject.Count)"
         Write-Verbose "Highest Word Frequency: $HighestFrequency; Average: $AverageFrequency"
-        Write-Verbose "Max Font Size: $MaxFontSize"
+        Write-Verbose "Max Font Size: $($HighestFrequency * $FontScale)"
 
         try {
             # Create a graphics object to measure the text's width and height.
@@ -241,7 +242,7 @@ function New-WordCloud {
             $Graphics = [Graphics]::FromImage($DummyImage)
 
             foreach ($Word in $SortedWordList) {
-                $WordHeightTable[$Word] = [Math]::Round( ($WordHeightTable[$Word] / $HighestFrequency) * $MaxFontSize)
+                $WordHeightTable[$Word] = [Math]::Round($WordHeightTable[$Word] * $FontScale)
                 if ($WordHeightTable[$Word] -lt 8) { continue }
 
                 $Font = [Font]::new(
@@ -352,8 +353,8 @@ function New-WordCloud {
 
                         # Target center of text on target point
                         #$CentreOffset = Get-Random -Minimum 0.0 -Maximum 1.0
-                        $OffsetX = $WordSizeTable[$Word].Width * $Noise.NextDouble()
-                        $OffsetY = $WordSizeTable[$Word].Height * $Noise.NextDouble()
+                        $OffsetX = $WordSizeTable[$Word].Width * 0.5
+                        $OffsetY = $WordSizeTable[$Word].Height * 0.5
                         $DrawLocation = [PointF]::new(
                             $Complex.Real + $CentrePoint.X - $OffsetX,
                             $Complex.Imaginary + $CentrePoint.Y - $OffsetY
