@@ -51,7 +51,7 @@ function Convert-ToRadians {
         $Degrees
     )
     process {
-        ([Math]::PI / 180) * ($Degrees % 360)
+        ([Math]::PI / 180) * $Degrees
     }
 }
 
@@ -76,7 +76,7 @@ function New-WordCloud {
         [Parameter()]
         [Alias('ColourSet')]
         [KnownColor[]]
-        $ColorSet = [Enum]::GetValues([KnownColor]),
+        $ColorSet = [KnownColor].GetEnumNames(),
 
         [Parameter()]
         [Alias('MaxColours')]
@@ -96,7 +96,7 @@ function New-WordCloud {
         [ValidateRange(512, 16384)]
         [Alias('ImagePixelSize')]
         [int]
-        $ImageSize = 2048,
+        $ImageSize = 4096,
 
         [Parameter()]
         [ValidateRange(1, 20)]
@@ -123,18 +123,6 @@ function New-WordCloud {
         $OutputFormat = [FileFormat]::Png
     )
     begin {
-        if (-not (Test-Path -Path $Path)) {
-            $Path = (New-Item -ItemType File -Path $Path).FullName
-        }
-        else {
-            $Path = (Get-Item -Path $Path).FullName
-        }
-
-        $Noise = [Random]::new()
-
-        $ExportFormat = $OutputFormat | ConvertTo-ImageFormat
-        Write-Verbose "Export Format: $ExportFormat"
-
         $ExcludedWords = @(
             'a', 'about', 'above', 'after', 'again', 'against', 'all', 'also', 'am', 'an', 'and', 'any', 'are', 'aren''t', 'as',
             'at', 'be', 'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but', 'by', 'can', 'can''t',
@@ -152,15 +140,36 @@ function New-WordCloud {
             'where', 'where''s', 'which', 'while', 'who', 'who''s', 'whom', 'why', 'why''s', 'with', 'won''t', 'would',
             'wouldn''t', 'www', 'you', 'you''d', 'you''ll', 'you''re', 'you''ve', 'your', 'yours', 'yourself', 'yourselves'
         ) -join '|'
+        $SplitChars = " `n.,`"?!{}[]:()`“`”™" -as [char[]]
+        $ColorIndex = 0
+        $RadialDistance = 0
 
-        $SplitChars = [char[]]" `n.,`"?!{}[]:()`“`”™"
         $WordList = [List[string]]::new()
-
         $WordHeightTable = @{}
         $WordSizeTable = @{}
 
-        $MaxColors = if ($PSBoundParameters.ContainsKey('MaxColors')) { $MaxColors } else { [int]::MaxValue }
-        $MinSaturation = if ($Monochrome) { 0 } else { 0.5 }
+        $ExportFormat = $OutputFormat | ConvertTo-ImageFormat
+
+        if ($Monochrome) {
+            $MinSaturation = 0
+        }
+        else {
+            $MinSaturation = 0.5
+        }
+
+        if (-not $PSBoundParameters.ContainsKey('MaxColors')) {
+            $MaxColors = [int]::MaxValue
+        }
+
+        if (-not (Test-Path -Path $Path)) {
+            $Path = (New-Item -ItemType File -Path $Path).FullName
+        }
+        else {
+            $Path = (Get-Item -Path $Path).FullName
+        }
+
+        Write-Verbose "Export Format: $ExportFormat"
+
 
         $ColorList = $ColorSet |
             Sort-Object {Get-Random} |
@@ -173,7 +182,8 @@ function New-WordCloud {
                     [int]$Brightness = [Color]::FromKnownColor($_).GetBrightness() * 255
                     [Color]::FromArgb($Brightness, $Brightness, $Brightness)
                 }
-            } | Where-Object {
+            } |
+            Where-Object {
                 if ($BackgroundColor) {
                     $_.Name -notmatch $BackgroundColor -and
                     $_.GetSaturation() -ge $MinSaturation
@@ -181,16 +191,12 @@ function New-WordCloud {
                 else {
                     $_.GetSaturation() -ge $MinSaturation
                 }
-            } | Sort-Object -Descending {
+            } |
+            Sort-Object -Descending {
                 $Value = $_.GetBrightness()
                 $Random = (-$Value..$Value | Get-Random) / (1 - $_.GetSaturation())
                 $Value + $Random
             }
-
-        $RectangleList = [List[RectangleF]]::new()
-
-        $ColorIndex = 0
-        $RadialDistance = 0
     }
     process {
         $WordList.AddRange(
@@ -232,6 +238,7 @@ function New-WordCloud {
             ForEach-Object {$_.Maximum, $_.Average}
 
         $FontScale = $ImageSize * 2 / ($AverageFrequency * $SortedWordList.Count)
+
         Write-Verbose "Unique Words Count: $($WordHeightTable.PSObject.BaseObject.Count)"
         Write-Verbose "Highest Word Frequency: $HighestFrequency; Average: $AverageFrequency"
         Write-Verbose "Max Font Size: $($HighestFrequency * $FontScale)"
@@ -254,10 +261,11 @@ function New-WordCloud {
 
                 $WordSizeTable[$Word] = $Graphics.MeasureString($Word, $Font)
             }
-            $WordHeightTable | Out-String | Write-Verbose
+
+            $WordHeightTable | Out-String | Write-Debug
         }
         catch {
-            throw $_
+            $PSCmdlet.ThrowTerminatingError($_)
         }
         finally {
             if ($Graphics) {
@@ -268,11 +276,8 @@ function New-WordCloud {
             }
         }
 
-        #[SizeF]$FocalWord = $WordSizeTable[$SortedWordList[0]]
-        #$WordSizeTable[$SortedWordList[0]] = [SizeF]::new($FocalWord.Width, $FocalWord.Height * 0.6)
-
         $CentrePoint = [PointF]::new($ImageSize / 2, $ImageSize / 2)
-        Write-Verbose "Final Image size will be $ImageSize with centrepoint $CentrePoint"
+        Write-Verbose "Final Image size will be ${ImageSize}x${ImageSize} px"
 
         try {
             $WordCloudImage = [Bitmap]::new($ImageSize, $ImageSize)
@@ -284,6 +289,7 @@ function New-WordCloud {
             $DrawingSurface.SmoothingMode = [Drawing2D.SmoothingMode]::AntiAlias
             $DrawingSurface.TextRenderingHint = [Text.TextRenderingHint]::AntiAlias
 
+            $RectangleList = [List[RectangleF]]::new()
             $RadialScanCount = 0
             :words foreach ($Word in $SortedWordList) {
                 if (-not $WordSizeTable[$Word]) { continue }
@@ -299,50 +305,23 @@ function New-WordCloud {
                 $WordRectangle = $null
                 do {
                     if ( $RadialDistance -gt ($ImageSize / 2) ) {
+                        $RadialDistance = $ImageSize / $DistanceStep / 25
                         continue words
                     }
-                    $IsColliding = $false
 
                     $AngleIncrement = 360 / ( ($RadialDistance + 1) * $RadialGranularity / 10 )
                     switch ([int]$RadialScanCount -band 7) {
-                        0 {
-                            $Start = 0
-                            $End = 360
-                        }
-                        1 {
-                            $Start = -90
-                            $End = 270
-                        }
-                        2 {
-                            $Start = -180
-                            $End = 180
-                        }
-                        3 {
-                            $Start = -270
-                            $End = 90
-                        }
-                        4 {
-                            $AngleIncrement = - $AngleIncrement
-                            $Start = 360
-                            $End = 0
-                        }
-                        5 {
-                            $AngleIncrement = - $AngleIncrement
-                            $Start = 270
-                            $End = -90
-                        }
-                        6 {
-                            $AngleIncrement = - $AngleIncrement
-                            $Start = 180
-                            $End = -180
-                        }
-                        7 {
-                            $AngleIncrement = - $AngleIncrement
-                            $Start = 90
-                            $End = -270
-                        }
+                        0 { $Start = 0;    $End = 360 }
+                        1 { $Start = -90;  $End = 270 }
+                        2 { $Start = -180; $End = 180 }
+                        3 { $Start = -270; $End = 90  }
+                        4 { $Start = 360;  $End = 0;    $AngleIncrement *= -1 }
+                        5 { $Start = 270;  $End = -90;  $AngleIncrement *= -1 }
+                        6 { $Start = 180;  $End = -180; $AngleIncrement *= -1 }
+                        7 { $Start = 90;   $End = -270; $AngleIncrement *= -1 }
                     }
 
+                    $IsColliding = $false
                     for (
                         $Angle = $Start;
                         $( if ($Start -lt $End) {$Angle -le $End} else {$End -le $Angle} );
@@ -351,8 +330,6 @@ function New-WordCloud {
                         $Radians = Convert-ToRadians -Degrees $Angle
                         $Complex = [Complex]::FromPolarCoordinates($RadialDistance, $Radians)
 
-                        # Target center of text on target point
-                        #$CentreOffset = Get-Random -Minimum 0.0 -Maximum 1.0
                         $OffsetX = $WordSizeTable[$Word].Width * 0.5
                         $OffsetY = $WordSizeTable[$Word].Height * 0.5
                         $DrawLocation = [PointF]::new(
@@ -395,8 +372,8 @@ function New-WordCloud {
                     $ColorIndex = 0
                 }
 
+                Write-Debug "Writing $Word with font $Font in $Color at $DrawLocation"
                 $DrawingSurface.DrawString($Word, $Font, [SolidBrush]::new($Color), $DrawLocation)
-
 
                 $RadialDistance -= $DistanceStep * ($RadialScanCount / 2)
             }
@@ -405,7 +382,7 @@ function New-WordCloud {
             $WordCloudImage.Save($Path, $ExportFormat)
         }
         catch {
-            throw $_
+            $PSCmdlet.ThrowTerminatingError($_)
         }
         finally {
             $DrawingSurface.Dispose()
